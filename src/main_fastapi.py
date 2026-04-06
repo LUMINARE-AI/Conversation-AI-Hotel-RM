@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException, Query, Form, Request, WebSocket, WebSocketDisconnect
+from contextlib import asynccontextmanager
 import wave
 import io
 import audioop
@@ -44,11 +45,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 🔥 Startup logic
+    try:
+        initialize_dummy_data()
+        print("✅ Dummy data initialized")
+    except Exception as e:
+        print("❌ Dummy data error:", e)
+
+    yield
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Beacon Hotel Relationship Manager",
     description="AI-powered customer relationship management system",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 @app.options("/{full_path:path}")
@@ -385,6 +398,26 @@ def get_customer(customer_id: str):
         logger.error(f"Error fetching customer: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/api/v1/customers/{customer_id}", tags=["Customers"])
+def delete_customer(customer_id: str):
+    try:
+        customer = session.query(Customer).filter_by(
+            customer_id=customer_id).first()
+
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+
+        session.delete(customer)
+        session.commit()
+
+        return {
+            "status": "deleted",
+            "customer_id": customer_id
+        }
+
+    except Exception as e:
+        session.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/v1/customers/{customer_id}", response_model=UpdateCustomerResponse, tags=["Customers"])
 def update_customer(customer_id: str, update_req: UpdateCustomerRequest):

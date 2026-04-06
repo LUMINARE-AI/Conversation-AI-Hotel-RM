@@ -89,6 +89,10 @@ def generate_dummy_call_history(customers_count: int = 50):
 def generate_dummy_analysis():
     """Generate dummy relationship analysis records"""
     session = get_session()
+
+    if session.query(RelationshipAnalysis).first():
+        print("✓ Relationship analysis already exists, skipping generation")
+        return
     
     customers = session.query(Customer).all()
     
