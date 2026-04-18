@@ -201,7 +201,7 @@ curl -X POST http://localhost:8000/api/v1/init/dummy-data
 ### 1. Start the FastAPI Server
 
 ```bash
-python src/main_fastapi.py
+python src/main_fastapi.py or python -m
 ```
 
 The API will be available at `http://localhost:8000` with interactive docs at `http://localhost:8000/docs`.

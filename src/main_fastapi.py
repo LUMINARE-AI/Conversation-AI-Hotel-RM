@@ -8,18 +8,21 @@ from src.services.livekit_sip_agent import LiveKitSIPAgentService, LIVEKIT_AGENT
 from src.services.livekit_streaming_service import LiveKitStreamingService
 from src.services.audio_service import AudioService
 from src.services.conversational_call_handler import ConversationalCallManager
-from src.services.servam_service import ServamService
+from src.services.servam_service import get_servam_service
 from src.services.twilio_service import TwilioService
 from src.agents.relationship_manager_agent import RelationshipManagerAgent
-from src.models.database import init_db, get_session, Customer, CallHistory, CallSchedule
+from sqlalchemy.orm import Session
+from src.models.database import init_db, get_db, Customer, CallHistory, CallSchedule
+from src.api.web_ws import router as web_ws_router
 from config.config import get_config
 from pydantic import BaseModel
 from pathlib import Path
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, Query, Form, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Form, Request, WebSocket, WebSocketDisconnect, Depends
 from contextlib import asynccontextmanager
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import wave
 import io
 import audioop
@@ -82,13 +85,12 @@ config = get_config()
 # Initialize services
 relationship_agent = RelationshipManagerAgent()
 twilio_service = TwilioService()
-servam_service = ServamService()
+servam_service = get_servam_service()
 conversational_manager = ConversationalCallManager()
 call_logger = CallLogger()
 audio_service = AudioService()
 livekit_streaming_service = LiveKitStreamingService()
 livekit_sip_service = LiveKitSIPAgentService()
-session = get_session()
 
 # Track processed Twilio recordings to avoid duplicate processing from retries/callback races
 PROCESSED_RECORDING_SIDS = set()
@@ -98,6 +100,8 @@ PROCESSED_STREAM_UTTERANCES = set()
 audio_dir = Path("audio")
 audio_dir.mkdir(exist_ok=True)
 app.mount("/audio", StaticFiles(directory=str(audio_dir)), name="audio")
+
+app.include_router(web_ws_router)
 
 # Pydantic models for request/response
 
@@ -348,10 +352,10 @@ def health_check():
 
 
 @app.get("/api/v1/customers", response_model=CustomersList, tags=["Customers"])
-def get_customers(limit: int = Query(50, ge=1, le=500)):
+def get_customers(db: Session = Depends(get_db), limit: int = Query(50, ge=1, le=500)):
     """Get all customers"""
     try:
-        customers = session.query(Customer).limit(limit).all()
+        customers = db.query(Customer).limit(limit).all()
 
         customer_details = [
             CustomerDetail(
@@ -373,10 +377,10 @@ def get_customers(limit: int = Query(50, ge=1, le=500)):
 
 
 @app.get("/api/v1/customers/{customer_id}", tags=["Customers"])
-def get_customer(customer_id: str):
+def get_customer(customer_id: str, db: Session = Depends(get_db)):
     """Get customer details"""
     try:
-        customer = session.query(Customer).filter_by(
+        customer = db.query(Customer).filter_by(
             customer_id=customer_id).first()
 
         if not customer:
@@ -399,16 +403,16 @@ def get_customer(customer_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/api/v1/customers/{customer_id}", tags=["Customers"])
-def delete_customer(customer_id: str):
+def delete_customer(customer_id: str, db: Session = Depends(get_db)):
     try:
-        customer = session.query(Customer).filter_by(
+        customer = db.query(Customer).filter_by(
             customer_id=customer_id).first()
 
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
 
-        session.delete(customer)
-        session.commit()
+        db.delete(customer)
+        db.commit()
 
         return {
             "status": "deleted",
@@ -416,11 +420,11 @@ def delete_customer(customer_id: str):
         }
 
     except Exception as e:
-        session.rollback()
+        db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.put("/api/v1/customers/{customer_id}", response_model=UpdateCustomerResponse, tags=["Customers"])
-def update_customer(customer_id: str, update_req: UpdateCustomerRequest):
+def update_customer(customer_id: str, update_req: UpdateCustomerRequest, db: Session = Depends(get_db)):
     """
     Update customer details (especially phone number)
 
@@ -432,7 +436,7 @@ def update_customer(customer_id: str, update_req: UpdateCustomerRequest):
     }
     """
     try:
-        customer = session.query(Customer).filter_by(
+        customer = db.query(Customer).filter_by(
             customer_id=customer_id).first()
 
         if not customer:
@@ -444,7 +448,7 @@ def update_customer(customer_id: str, update_req: UpdateCustomerRequest):
         # Update only provided fields
         if update_req.phone is not None:
             # Check if new phone already exists
-            existing = session.query(Customer).filter_by(
+            existing = db.query(Customer).filter_by(
                 phone=update_req.phone).first()
             if existing and existing.customer_id != customer_id:
                 raise HTTPException(
@@ -477,7 +481,7 @@ def update_customer(customer_id: str, update_req: UpdateCustomerRequest):
             raise HTTPException(status_code=400, detail="No fields to update")
 
         customer.updated_at = datetime.utcnow()
-        session.commit()
+        db.commit()
 
         return UpdateCustomerResponse(
             status="updated",
@@ -488,7 +492,7 @@ def update_customer(customer_id: str, update_req: UpdateCustomerRequest):
     except HTTPException:
         raise
     except Exception as e:
-        session.rollback()
+        db.rollback()
         logger.error(f"Error updating customer: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -510,10 +514,10 @@ def analyze_customer(customer_id: str):
 
 
 @app.get("/api/v1/customers/{customer_id}/call-history", tags=["Calls"])
-def get_call_history(customer_id: str, limit: int = Query(20, ge=1, le=100)):
+def get_call_history(customer_id: str, limit: int = Query(20, ge=1, le=100), db: Session = Depends(get_db)):
     """Get customer's call history"""
     try:
-        calls = session.query(CallHistory).filter_by(
+        calls = db.query(CallHistory).filter_by(
             customer_id=customer_id
         ).order_by(CallHistory.call_date.desc()).limit(limit).all()
 
@@ -554,13 +558,13 @@ def schedule_calls():
 
 
 @app.post("/api/v1/calls/make", response_model=CallResponse, tags=["Calls"])
-def make_call(call_request: CallRequest):
+def make_call(call_request: CallRequest, db: Session = Depends(get_db)):
     """Make a call to a customer"""
     try:
         customer_id = call_request.customer_id
 
         # Get customer
-        customer = session.query(Customer).filter_by(
+        customer = db.query(Customer).filter_by(
             customer_id=customer_id).first()
         if not customer:
             raise HTTPException(status_code=404, detail="Customer not found")
@@ -620,7 +624,7 @@ def log_call(log_request: CallLogRequest):
 
 
 @app.get("/api/v1/reports/export", tags=["Reports"])
-def export_reports(report_type: str = Query("json", regex="^(json|csv|xlsx)$"), days: int = Query(30, ge=1)):
+def export_reports(report_type: str = Query("json", pattern="^(json|csv|xlsx)$"), days: int = Query(30, ge=1)):
     """Export call reports"""
     try:
         # Placeholder for report generation
@@ -996,12 +1000,12 @@ def get_conversational_demo():
 
 
 @app.get("/api/v1/metrics/summary", tags=["Metrics"])
-def get_metrics():
+def get_metrics(db: Session = Depends(get_db)):
     """Get metrics summary"""
     try:
-        total_customers = session.query(Customer).count()
-        total_calls = session.query(CallHistory).count()
-        active_customers = session.query(
+        total_customers = db.query(Customer).count()
+        total_calls = db.query(CallHistory).count()
+        active_customers = db.query(
             Customer).filter_by(is_active=True).count()
 
         return {
@@ -1018,7 +1022,7 @@ def get_metrics():
 
 
 @app.post("/api/v1/customers/create", response_model=CreateCustomerResponse, tags=["TestData"])
-def create_customer(customer_request: CreateCustomerRequest):
+def create_customer(customer_request: CreateCustomerRequest, db: Session = Depends(get_db)):
     """
     Create a new customer with real phone number for testing.
 
@@ -1039,14 +1043,14 @@ def create_customer(customer_request: CreateCustomerRequest):
     """
     try:
         # Check if customer already exists
-        existing = session.query(Customer).filter_by(
+        existing = db.query(Customer).filter_by(
             phone=customer_request.phone).first()
         if existing:
             raise HTTPException(
                 status_code=400, detail=f"Customer with phone {customer_request.phone} already exists")
 
         # Generate unique customer ID
-        customer_count = session.query(Customer).count()
+        customer_count = db.query(Customer).count()
         customer_id = f"CUST{1000 + customer_count + 1}"
 
         # Create new customer
@@ -1063,8 +1067,8 @@ def create_customer(customer_request: CreateCustomerRequest):
             last_stay_date=datetime.utcnow()
         )
 
-        session.add(new_customer)
-        session.commit()
+        db.add(new_customer)
+        db.commit()
 
         logger.info(
             f"Created customer {customer_id} with phone {customer_request.phone}")
@@ -1079,13 +1083,13 @@ def create_customer(customer_request: CreateCustomerRequest):
     except HTTPException:
         raise
     except Exception as e:
-        session.rollback()
+        db.rollback()
         logger.error(f"Error creating customer: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/v1/customers/create-bulk", response_model=BulkCreateCustomersResponse, tags=["TestData"])
-def create_customers_bulk(bulk_request: BulkCreateCustomersRequest):
+def create_customers_bulk(bulk_request: BulkCreateCustomersRequest, db: Session = Depends(get_db)):
     """
     Create multiple customers at once with real phone numbers for batch testing.
 
@@ -1114,12 +1118,12 @@ def create_customers_bulk(bulk_request: BulkCreateCustomersRequest):
     try:
         created_customers = []
         failed_count = 0
-        customer_base_count = session.query(Customer).count()
+        customer_base_count = db.query(Customer).count()
 
         for idx, customer_req in enumerate(bulk_request.customers):
             try:
                 # Check if customer already exists
-                existing = session.query(Customer).filter_by(
+                existing = db.query(Customer).filter_by(
                     phone=customer_req.phone).first()
                 if existing:
                     logger.warning(
@@ -1144,8 +1148,8 @@ def create_customers_bulk(bulk_request: BulkCreateCustomersRequest):
                     last_stay_date=datetime.utcnow()
                 )
 
-                session.add(new_customer)
-                session.flush()  # Flush to ensure ID is generated
+                db.add(new_customer)
+                db.flush()  # Flush to ensure ID is generated
 
                 created_customers.append(CreateCustomerResponse(
                     status="created",
@@ -1158,9 +1162,9 @@ def create_customers_bulk(bulk_request: BulkCreateCustomersRequest):
             except Exception as e:
                 logger.error(f"Error creating customer {idx}: {str(e)}")
                 failed_count += 1
-                session.rollback()
+                db.rollback()
 
-        session.commit()
+        db.commit()
         logger.info(
             f"Bulk created {len(created_customers)} customers failed: {failed_count}")
 
@@ -1171,7 +1175,7 @@ def create_customers_bulk(bulk_request: BulkCreateCustomersRequest):
             customers_created=created_customers
         )
     except Exception as e:
-        session.rollback()
+        db.rollback()
         logger.error(f"Error in bulk customer creation: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1864,7 +1868,7 @@ async def twilio_media_stream_ws(
 
 
 @app.post("/api/v1/calls/test", response_model=TestCallResponse, tags=["TestData"])
-def test_call_to_customer(test_call_req: TestCallRequest):
+def test_call_to_customer(test_call_req: TestCallRequest, db: Session = Depends(get_db)):
     """
     Make a test conversational call.
 
@@ -1888,7 +1892,7 @@ def test_call_to_customer(test_call_req: TestCallRequest):
     """
     try:
         # Get customer
-        customer = session.query(Customer).filter_by(
+        customer = db.query(Customer).filter_by(
             customer_id=test_call_req.customer_id).first()
         if not customer:
             raise HTTPException(
@@ -2068,7 +2072,7 @@ def test_call_to_customer(test_call_req: TestCallRequest):
 
 
 @app.post("/api/v1/calls/test-livekit-sip", response_model=LiveKitSIPCallResponse, tags=["Streaming"])
-async def test_livekit_sip_call(req: LiveKitSIPCallRequest):
+async def test_livekit_sip_call(req: LiveKitSIPCallRequest, db: Session = Depends(get_db)):
     """
     Place an outbound call via LiveKit SIP trunk.
 
@@ -2096,7 +2100,7 @@ async def test_livekit_sip_call(req: LiveKitSIPCallRequest):
             detail="LiveKit SIP not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_SIP_TRUNK_ID.",
         )
 
-    customer = session.query(Customer).filter_by(
+    customer = db.query(Customer).filter_by(
         customer_id=req.customer_id).first()
     if not customer:
         raise HTTPException(
@@ -2138,18 +2142,18 @@ async def test_livekit_sip_call(req: LiveKitSIPCallRequest):
 
 
 @app.get("/api/v1/customers/test-data/list", tags=["TestData"])
-def list_test_customers(limit: int = Query(50, ge=1, le=500)):
+def list_test_customers(limit: int = Query(50, ge=1, le=500), db: Session = Depends(get_db)):
     """
     List all customers created via API (test data).
 
     Shows all customers that are available for testing calls.
     """
     try:
-        customers = session.query(Customer).order_by(
+        customers = db.query(Customer).order_by(
             Customer.created_at.desc()).limit(limit).all()
 
         return {
-            "total_count": session.query(Customer).count(),
+            "total_count": db.query(Customer).count(),
             "returned": len(customers),
             "customers": [
                 {
@@ -2169,17 +2173,6 @@ def list_test_customers(limit: int = Query(50, ge=1, le=500)):
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== APP STARTUP ====================
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize database and services on startup"""
-    logger.info("Starting Beacon Hotel Relationship Manager (FastAPI)")
-    try:
-        init_db()
-        logger.info("✓ Database initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
 
 if __name__ == "__main__":
     import uvicorn

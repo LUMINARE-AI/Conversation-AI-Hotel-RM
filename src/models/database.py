@@ -2,9 +2,11 @@
 Database models for Beacon Hotel Relationship Manager
 """
 from datetime import datetime
+from typing import Generator
+
 from sqlalchemy import create_engine, Column, String, Integer, Float, DateTime, Boolean, Text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from config.config import get_config
 
 Base = declarative_base()
@@ -78,14 +80,43 @@ class CallSchedule(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+_engine = None
+_session_factory = None
+
+
+def get_engine():
+    """Shared engine with connection pooling (one per process)."""
+    global _engine
+    if _engine is None:
+        _engine = create_engine(config.DATABASE_URL, pool_pre_ping=True)
+    return _engine
+
+
+def _get_session_factory():
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = sessionmaker(
+            autocommit=False, autoflush=False, bind=get_engine()
+        )
+    return _session_factory
+
+
 def init_db():
-    """Initialize database"""
-    engine = create_engine(config.DATABASE_URL)
+    """Initialize database tables."""
+    engine = get_engine()
     Base.metadata.create_all(engine)
     return engine
 
-def get_session():
-    """Get database session"""
-    engine = create_engine(config.DATABASE_URL)
-    Session = sessionmaker(bind=engine)
-    return Session()
+
+def get_session() -> Session:
+    """New Session instance. Do not share across concurrent requests."""
+    return _get_session_factory()()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """FastAPI dependency: one session per request, always closed after."""
+    db = _get_session_factory()()
+    try:
+        yield db
+    finally:
+        db.close()

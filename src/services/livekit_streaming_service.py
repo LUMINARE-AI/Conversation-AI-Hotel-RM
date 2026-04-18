@@ -11,7 +11,7 @@ from typing import Dict, Optional
 
 from fastapi import WebSocket
 
-from src.services.servam_service import ServamService
+from src.services.servam_service import get_servam_service
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class LiveKitStreamingService:
     """Bridge LiveKit-style websocket audio streams with Sarvam streaming APIs."""
 
     def __init__(self):
-        self.servam = ServamService()
+        self.servam = get_servam_service()
         self.api_key = self.servam.api_key
 
     def _normalize_language_code(self, language: str) -> str:

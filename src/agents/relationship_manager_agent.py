@@ -9,7 +9,7 @@ from src.models.database import (
     get_session, Customer, CallHistory, 
     RelationshipAnalysis, CallSchedule
 )
-from src.services.servam_service import ServamService
+from src.services.servam_service import get_servam_service
 from config.config import get_config
 
 logger = logging.getLogger(__name__)
@@ -19,7 +19,7 @@ class RelationshipManagerAgent:
     """AI Agent for managing customer relationships"""
     
     def __init__(self):
-        self.servam = ServamService()
+        self.servam = get_servam_service()
         self.session = get_session()
     
     def analyze_customer_history(self, customer_id: str) -> Optional[Dict]:

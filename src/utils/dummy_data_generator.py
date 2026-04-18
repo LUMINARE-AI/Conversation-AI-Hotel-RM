@@ -131,12 +131,23 @@ def initialize_dummy_data():
     init_db()
     print("✓ Database initialized")
     
+    # Check if data already exists
+    session = get_session()
+    try:
+        existing_customers = session.query(Customer).count()
+        if existing_customers > 0:
+            print(f"✓ Dummy data already exists ({existing_customers} customers), skipping generation")
+            return existing_customers, 0
+    finally:
+        session.close()
+    
     # Generate data
     generate_dummy_customers(50)
     generate_dummy_call_history(50)
     generate_dummy_analysis()
     
     print("\n✅ Dummy data generation complete!\n")
+    return 50, 50
 
 if __name__ == "__main__":
     initialize_dummy_data()

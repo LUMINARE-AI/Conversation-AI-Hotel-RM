@@ -6,8 +6,9 @@ import Customers from "./pages/Customers";
 import Call from "./pages/Call";
 import Reports from "./pages/Reports";
 import Upload from "./pages/Upload";
+import Samvaad from "./pages/Samvaad";
 
-const PAGES = { dashboard: Dashboard, customers: Customers, call: Call, reports: Reports, upload: Upload };
+const PAGES = { dashboard: Dashboard, customers: Customers, call: Call, reports: Reports, upload: Upload, samvaad: Samvaad };
 
 export default function App() {
   const [page, setPage]   = useState("dashboard");

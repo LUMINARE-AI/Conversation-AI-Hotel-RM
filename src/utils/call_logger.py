@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from typing import Optional, Dict
 from src.models.database import get_session, CallHistory
-from src.services.servam_service import ServamService
+from src.services.servam_service import get_servam_service
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ class CallLogger:
     
     def __init__(self):
         self.session = get_session()
-        self.servam = ServamService()
+        self.servam = get_servam_service()
     
     def log_call(self, customer_id: str, call_sid: str, 
                  transcript: str, duration: int,

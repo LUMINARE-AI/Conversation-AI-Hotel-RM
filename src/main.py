@@ -16,7 +16,7 @@ from config.config import get_config
 from src.models.database import init_db, get_session, Customer, CallHistory, CallSchedule
 from src.agents.relationship_manager_agent import RelationshipManagerAgent
 from src.services.twilio_service import TwilioService
-from src.services.servam_service import ServamService
+from src.services.servam_service import get_servam_service
 from src.utils.call_logger import CallLogger
 from src.utils.dummy_data_generator import initialize_dummy_data
 from fastapi import FastAPI
@@ -36,7 +36,7 @@ config = get_config()
 # Initialize services
 relationship_agent = RelationshipManagerAgent()
 twilio_service = TwilioService()
-servam_service = ServamService()
+servam_service = get_servam_service()
 call_logger = CallLogger()
 session = get_session()
 

@@ -4,7 +4,7 @@ Generates natural-sounding audio ON-THE-FLY for IVR prompts (no file storage)
 """
 import logging
 import urllib.parse
-from src.services.servam_service import ServamService
+from src.services.servam_service import get_servam_service
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ class AudioService:
     """Service for generating TTS audio dynamically without file storage"""
     
     def __init__(self):
-        self.servam = ServamService()
+        self.servam = get_servam_service()
         logger.info("✓ Audio service initialized (streaming mode - no file storage)")
     
     def generate_audio_bytes(self, text: str, language: str = "en") -> bytes:
@@ -29,6 +29,9 @@ class AudioService:
         try:
             logger.info(f"🎤 Generating audio on-the-fly: '{text[:50]}...' (lang: {language})")
             
+            # Accept both short and full language codes
+            normalized_lang = language.split("-")[0].lower() if isinstance(language, str) else "en"
+
             # Map language codes to Sarvam speaker names and proper language codes
             # Available speakers: anushka, abhilash, manisha, vidya, arya, karun, etc.
             config_map = {
@@ -38,7 +41,7 @@ class AudioService:
                 "te": {"speaker": "vidya", "target_lang": "te-IN"},        # Female Telugu
                 "ml": {"speaker": "arya", "target_lang": "ml-IN"},         # Female Malayalam
             }
-            config = config_map.get(language, {"speaker": "anushka", "target_lang": "en-IN"})
+            config = config_map.get(normalized_lang, {"speaker": "anushka", "target_lang": "en-IN"})
             
             # Generate audio using Sarvam TTS with specified speaker and language
             audio_data = self.servam.text_to_speech(

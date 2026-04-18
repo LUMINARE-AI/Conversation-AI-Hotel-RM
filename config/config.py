@@ -15,9 +15,9 @@ class Config:
     # Servam Configuration
     SERVAM_API_KEY = os.getenv("SERVAM_API_KEY", "your-api-key")
     SERVAM_API_URL = os.getenv("SERVAM_API_URL", "https://api.servam.com")
-    SERVAM_STT_MODEL = os.getenv("SERVAM_STT_MODEL", "default-stt")
-    SERVAM_TTS_MODEL = os.getenv("SERVAM_TTS_MODEL", "default-tts")
-    SERVAM_LLM_MODEL = os.getenv("SERVAM_LLM_MODEL", "default-llm")
+    SERVAM_STT_MODEL = os.getenv("SERVAM_STT_MODEL", "saaras:v3")
+    SERVAM_TTS_MODEL = os.getenv("SERVAM_TTS_MODEL", "bulbul:v3")
+    SERVAM_LLM_MODEL = os.getenv("SERVAM_LLM_MODEL", "sarvam") # 
     
     # Twilio Configuration
     TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "your-account-sid")

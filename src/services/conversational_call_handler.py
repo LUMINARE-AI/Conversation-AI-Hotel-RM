@@ -22,14 +22,22 @@ import logging
 import json
 import re
 from datetime import datetime
+from statistics import mode
 from typing import Optional, Dict, List, Tuple
 from src.models.database import get_session, CallHistory, Customer
-from src.services.servam_service import ServamService
+from src.services.servam_service import get_servam_service
 from src.agents.relationship_manager_agent import RelationshipManagerAgent
 from config.config import get_config
 
 logger = logging.getLogger(__name__)
 config = get_config()
+
+# Voice LLM: enough headroom (reasoning models); moderate temp for natural phone tone
+LLM_VOICE_MAX_TOKENS = 512
+LLM_VOICE_TEMPERATURE = 0.35
+
+# Samvaad / branding — spoken in first turn templates
+BRAND_LUMINARE_AI = "Luminare AI"
 
 # Global conversation history storage (in production, use Redis/database)
 # Key: call_sid, Value: {customer_id, language, messages: [{role, content}], turn_count, start_time}
@@ -42,10 +50,10 @@ class ConversationalCallManager:
     """
     
     def __init__(self):
-        self.sarvam = ServamService()
+        self.sarvam = get_servam_service()
         self.agent = RelationshipManagerAgent()
         self.session = get_session()
-
+    
     def _should_switch_language(self, current_language: str, detected_language: str, text: str) -> bool:
         """
         Decide whether to switch conversation language for this turn.
@@ -62,7 +70,7 @@ class ConversationalCallManager:
             return False
 
         # Only allow en↔hi switches freely; block ta/te/ml/kn unless overwhelming evidence
-        allowed_easy_switch = {"en", "hi"}
+        allowed_easy_switch = {"en", "hi", "ta", "te", "ml"}
         if detected_language not in allowed_easy_switch:
             logger.info(f"🌍 Blocking language switch to {detected_language} (only en/hi allowed without strong evidence)")
             return False
@@ -112,7 +120,72 @@ class ConversationalCallManager:
             return f"{normalized}।"
 
         return f"{normalized}."
-    
+
+    def _is_filler_utterance(self, text: str) -> bool:
+        """True if the user only said filler / deictic words (e.g. 'Just', 'This') with no substance."""
+        t = (text or "").strip().lower()
+        if not t:
+            return True
+        words = re.findall(r"[a-zA-Z']+", t)
+        if not words:
+            return len(t) <= 4
+        # Only non-semantic noise / deictics — not "good", "yes", "nice" (those can be real answers)
+        fillers = {
+            "just", "this", "that", "um", "uh", "hmm", "mm", "mmm", "okay", "ok",
+            "well", "so", "hi", "hey", "hello", "bye", "thanks", "thank", "you",
+            "got", "it",
+        }
+        if len(words) > 4:
+            return False
+        return all(w in fillers for w in words)
+
+    # ==================== Samvaad Detection ====================  
+    def get_system_prompt(self, mode: str) -> str:
+        voice = """
+VOICE (Samvaad-style — you are """ + BRAND_LUMINARE_AI + """, a natural voice assistant powered by Sarvam. Sound human on a live call, not a chatbot):
+- Short, natural sentences. Use contractions: I'm, we're, that's, don't, it's.
+- Warm and calm; avoid stiff corporate openers every time — vary your wording.
+- React to what they *just* said; one clear thought per reply.
+- Never repeat your *previous* reply verbatim. If they only say "okay", "just", or "this", acknowledge briefly and move toward a clean close — do not paste the same long paragraph again.
+- Do not list policies unless they ask. No emojis.
+- Output ONLY the words you would speak aloud. Never use <redacted_thinking>, hidden reasoning, or step-by-step planning in your reply.
+"""
+        if mode == "hotel":
+            return """You are """ + BRAND_LUMINARE_AI + """ for Luminare Hotels — like Sarvam Samvaad: clear, brief, friendly phone conversation with a guest.
+""" + voice + """
+              CONVERSATION FLOW (follow this structure):
+                Turn 1: Acknowledge how they are doing, then ask "Are you planning to visit us again soon?"
+                Turn 2 (if they say YES): "That's wonderful! As a valued guest, we have an exclusive 20% loyalty discount for your next stay. We'd love to welcome you back. See you soon and take care!"
+                Turn 2 (if they say NO / not sure): "No worries! Whenever you plan in the future, we have a special 20% discount waiting just for you. Hope to see you soon! Take care."
+                Turn 2 (if negative experience): Apologize sincerely, offer 30% recovery discount, say goodbye warmly.
+                Turn 3+: Thank them and say goodbye. The call should end naturally after the discount offer.
+
+              IMPORTANT: Once you have offered the discount and said goodbye, do NOT continue the conversation. End warmly.  
+              """
+
+        elif mode == "election":
+            return """You are """ + BRAND_LUMINARE_AI + """ representing Luminare Party — Samvaad-style: natural, respectful voter outreach (not a script).
+""" + voice + """
+              CONVERSATION FLOW (follow this structure):
+                Turn 1: Acknowledge their concerns, then ask "Are you planning to vote for us in the upcoming election?"
+                Turn 2 (if they say YES): "That's wonderful! We truly appreciate your support. Together, we can make a difference and create a better future. Thank you for standing with us!"
+                Turn 2 (if they say NO / not sure): "I understand. If you have any questions about our policies or want to know more about our vision for the future, I'm here to chat. Your voice matters, and we'd love to earn your support!"
+                Turn 2 (if negative experience with party): Apologize sincerely, address their concerns, and say goodbye warmly.
+                Turn 3+: Thank them and say goodbye. The call should end naturally after addressing their concerns.
+                IMPORTANT: Once you have addressed their concerns and said goodbye, do NOT continue the conversation. End warmly."""
+
+        elif mode == "feedback":
+            return """You are """ + BRAND_LUMINARE_AI + """ for Luminare Hospitals — Samvaad-style patient feedback: warm, unhurried, one question at a time.
+""" + voice + """
+              CONVERSATION FLOW (follow this structure):
+                Turn 1: Greet as Luminare AI, then ask how their visit or care experience was (one short question).
+                Turn 2 (if they sound positive): Warmth first, then one short invite for detail if they want — avoid long "we appreciate your feedback" blocks.
+                Turn 2 (if they sound negative or mixed): Brief sorry that matches what they said; invite one concrete detail; sound like a person, not a form letter.
+                Turn 3+: Short thanks and a clean goodbye — no new questions unless they raised something unclear.
+                IMPORTANT: After you've thanked them and said goodbye, stop — do not repeat the same closing if they only grunt "okay" or "mm-hmm"."""
+
+        return "You are a helpful AI assistant."
+      
     # ==================== LANGUAGE DETECTION (Script-based) ====================
     
     def detect_language_from_script(self, text: str) -> str:
@@ -148,7 +221,7 @@ class ConversationalCallManager:
     
     # ==================== CONVERSATION HISTORY MANAGEMENT ====================
     
-    def init_conversation(self, call_sid: str, customer_id: str, language: str = "en") -> Optional[Dict]:
+    def init_conversation(self, call_sid: str, customer_id: str, language: str = "en", mode: str = "hotel") -> Optional[Dict]:
         """
         Initialize conversation history for a new call
         
@@ -161,10 +234,22 @@ class ConversationalCallManager:
             Conversation context dict
         """
         try:
-            customer = self.session.query(Customer).filter_by(customer_id=customer_id).first()
-            if not customer:
-                logger.error(f"Customer {customer_id} not found")
-                return None
+            is_web_user = customer_id.startswith("web")
+
+            if is_web_user:
+                customer = type("Customer", (), {
+                    "name": "Web User",
+                    "total_visits": 0,
+                    "loyalty_score": 0,
+                    "last_stay_date": None,
+                    "preferred_room_type": None
+                })()
+            else:
+                customer = self.session.query(Customer).filter_by(customer_id=customer_id).first()
+
+                if not customer:
+                    logger.error(f"Customer {customer_id} not found")
+                    return None    
             
             # System prompt - natural conversational style
             customer_context = f"""
@@ -175,47 +260,34 @@ Customer Profile:
 - Last Visit: {customer.last_stay_date.strftime('%B %Y') if customer.last_stay_date else 'Unknown'}
 - Preferred Room: {customer.preferred_room_type or 'Not specified'}
 """
-            
-            system_message = f"""You are a warm, friendly hotel relationship manager having a genuine conversation with {customer.name}.
+            system_prompt = self.get_system_prompt(mode)
+            system_message = f"""
+{system_prompt}
 
-{customer_context}
+Customer Details: {customer_context}
 
-HOW TO RESPOND (CRITICAL):
-1. LISTEN & RESPOND - Always respond to what they just said, don't ignore their answer
-2. ACKNOWLEDGE PREVIOUS ANSWERS - Reference what they told you earlier in the call
-3. NATURAL FLOW - If they answered about experience, ask about specific details, not "tell me about experience" again
-4. ONE IDEA PER TURN - Keep responses SHORT: 1-2 sentences max
-5. NEVER REPEAT - Do not say the same thing you already said in a previous turn
-6. BE WARM & GENUINE - Like talking to a friend, remember details they shared
-
-CONVERSATION FLOW (follow this structure):
-Turn 1: Acknowledge how they are doing, then ask "Are you planning to visit us again soon?"
-Turn 2 (if they say YES): "That's wonderful! As a valued guest, we have an exclusive 20% loyalty discount for your next stay. We'd love to welcome you back. See you soon and take care!"
-Turn 2 (if they say NO / not sure): "No worries! Whenever you plan in the future, we have a special 20% discount waiting just for you. Hope to see you soon! Take care."
-Turn 2 (if negative experience): Apologize sincerely, offer 30% recovery discount, say goodbye warmly.
-Turn 3+: Thank them and say goodbye. The call should end naturally after the discount offer.
-
-IMPORTANT: Once you have offered the discount and said goodbye, do NOT continue the conversation. End warmly.
-
-CRITICAL LANGUAGE RULE:
-- Always respond in the language the user is currently using.
-- If the user changes language during the conversation, immediately switch and reply in the user's new language for all future responses.
-- Do not translate or repeat in another language unless the user switches language.
-- For the first message, use this language: {language}
-
-Language Context: {language}"""
+Rules:
+- Respond in {language} only.
+- Keep response to 1-2 short sentences max (voice-friendly for TTS).
+- Follow the conversation flow strictly.
+- Read the user's last message and respond directly to it — sound like a real person, not a template.
+- No thinking tags or internal reasoning — only speakable text.
+- You are {BRAND_LUMINARE_AI} (Sarvam voice); sound helpful and conversational, not sales-heavy.
+"""
             
             context = {
                 "call_sid": call_sid,
                 "customer_id": customer_id,
                 "customer_name": customer.name,
                 "language": language,
+                "mode": mode,
                 "messages": [
                     {"role": "system", "content": system_message}
                 ],
                 "turn_count": 0,
                 "start_time": datetime.utcnow(),
-                "sentiment_history": []
+                "sentiment_history": [],
+                "conversation_done": False,
             }
             
             CONVERSATION_HISTORY[call_sid] = context
@@ -229,6 +301,36 @@ Language Context: {language}"""
     def get_conversation_context(self, call_sid: str) -> Optional[Dict]:
         """Get existing conversation context"""
         return CONVERSATION_HISTORY.get(call_sid)
+
+    def get_stt_language_code(self, call_sid: str) -> str:
+        """
+        Sarvam STT language_code for the *next* utterance (based on session language so far).
+        Uses en-IN for English sessions instead of 'unknown' to reduce wrong-script hallucinations.
+        """
+        ctx = self.get_conversation_context(call_sid)
+        if not ctx:
+            return "en-IN"
+        raw = (ctx.get("language") or "en").lower()
+        if raw.startswith("en"):
+            lang = "en"
+        elif raw.startswith("hi"):
+            lang = "hi"
+        elif raw.startswith("ta"):
+            lang = "ta"
+        elif raw.startswith("te"):
+            lang = "te"
+        elif raw.startswith("ml"):
+            lang = "ml"
+        else:
+            lang = raw.split("-")[0].split("_")[0] if raw else "en"
+        mapping = {
+            "en": "en-IN",
+            "hi": "hi-IN",
+            "ta": "ta-IN",
+            "te": "te-IN",
+            "ml": "ml-IN",
+        }
+        return mapping.get(lang, "en-IN")
     
     def append_user_message(self, call_sid: str, user_text: str) -> bool:
         """
@@ -264,9 +366,10 @@ Language Context: {language}"""
                     logger.info(f"🌍 Language detected: {context['language']} → {detected_lang}")
                     context["language"] = detected_lang
             
-            # Analyze sentiment
-            sentiment_result = self.sarvam.analyze_sentiment(user_text, context["language"])
-            sentiment = sentiment_result.get("sentiment", "neutral") if sentiment_result else "neutral"
+            # Skip sentiment analysis to reduce API calls
+            # sentiment_result = self.sarvam.analyze_sentiment(user_text, context["language"])
+            # sentiment = sentiment_result.get("sentiment", "neutral") if sentiment_result else "neutral"
+            sentiment = "neutral"  # Default sentiment
             context["sentiment_history"].append(sentiment)
             
             logger.info(f"✓ User: {user_text[:50]}... (lang: {context['language']}, sentiment: {sentiment})")
@@ -433,53 +536,146 @@ CODE ONLY:"""
                 logger.error(f"Conversation context not found: {call_sid}")
                 return None
             
+            if context.get("conversation_done"):
+                return None
+
             # Get last user message for trigger detection
             last_user_msg = ""
             for msg in reversed(context["messages"]):
                 if msg["role"] == "user":
                     last_user_msg = msg["content"].lower()
                     break
-            
+            mode = context.get("mode", "hotel")
+            language = context["language"]
+
+            # Feedback: vague filler late in the call — short closing, no duplicate LLM block (faster + human)
+            if mode == "feedback" and context["turn_count"] >= 3 and self._is_filler_utterance(last_user_msg):
+                context["conversation_done"] = True
+                n = context["turn_count"]
+                if language == "hi":
+                    outs = [
+                        "ठीक है — समय देने के लिए धन्यवाद। अपना ख्याल रखिए!",
+                        "धन्यवाद — यह हमारे लिए मायने रखता है। जल्दी फिर बात करेंगे!",
+                    ]
+                else:
+                    outs = [
+                        "Alright — thanks for taking the time. Wishing you a good day!",
+                        "Thanks — that really helps us. Take care!",
+                        "Appreciate you sharing that. Have a good one!",
+                    ]
+                pick = outs[n % len(outs)]
+                return self._ensure_complete_spoken_response(pick, language)
+
             # ============ SMART TRIGGER DETECTION ============
-            
-            # 1. Conversation end triggers
-            end_keywords = ["bye", "goodbye", "thank you", "not interested", "busy right now", "call later", "don't call"]
-            if any(word in last_user_msg for word in end_keywords):
-                logger.info(f"🔴 END TRIGGER detected: '{last_user_msg[:50]}'")
-                lang = context["language"]
-                closing_offers = {
-                    "en": "I understand! Before we go, we have a special 20% discount waiting for you on your next visit. Hope to see you soon!",
-                    "hi": "समझता हूँ! जाने से पहले, हम आपके लिए अगली यात्रा पर 20% छूट दे रहे हैं। जल्दी मिलेंगे!",
-                }
-                return closing_offers.get(lang, closing_offers["en"])
-            
-            # 2. Visit intent triggers - offer discount if not willing
-            no_visit_keywords = ["won't", "not planning", "don't think", "maybe later", "not soon", "not interested"]
-            if any(word in last_user_msg for word in no_visit_keywords):
-                logger.info(f"🟠 NO-VISIT TRIGGER detected: '{last_user_msg[:50]}'")
-                lang = context["language"]
-                discount_offers = {
-                    "en": "I totally understand! How about this - we're offering our best guests 25% off their next stay. That might change your mind?",
-                    "hi": "बिल्कुल समझता हूँ! लेकिन हमारे पास आपके लिए 25% की विशेष छूट है। क्या यह आपको फिर से आने के लिए प्रेरित करेगी?",
-                }
-                return discount_offers.get(lang, discount_offers["en"])
-            
-            # 3. Complaint/concern triggers
-            negative_keywords = ["bad", "horrible", "terrible", "never", "wasted", "worst", "rude", "avoid"]
-            if any(word in last_user_msg for word in negative_keywords):
-                logger.info(f"🟠 COMPLAINT TRIGGER detected: '{last_user_msg[:50]}'")
-                lang = context["language"]
-                apology_responses = {
-                    "en": "I'm truly sorry to hear that. We take feedback very seriously. Let me arrange a special recovery offer - 30% off your next stay to make things right?",
-                    "hi": "मुझे खेद है। हम आपके अनुभव को सुधारना चाहते हैं। क्या 30% छूट आपको फिर से मौका देने में मदद करेगी?",
-                }
-                return apology_responses.get(lang, apology_responses["en"])
-            
+            if mode == "hotel":
+
+                end_keywords = [
+                    "bye", "goodbye", "see you", "talk later", "not interested",
+                    "busy", "don't call again", "okay bye", "ok bye", "bye bye",
+                ]
+                if any(word in last_user_msg for word in end_keywords):
+                    context["conversation_done"] = True
+                    return {
+                        "en": "Thank you so much for your time. Take care, and we hope to see you again soon!",
+                        "hi": "आपके समय के लिए बहुत धन्यवाद! अपना ख्याल रखें, जल्द ही फिर मिलेंगे!",
+                        "ta": "உங்கள் நேரத்திற்கு மிக்க நன்றி! பார்த்துக் கொள்ளுங்கள், விரைவில் மீண்டும் சந்திப்போம்!",
+                        "te": "మీ సమయానికి చాలా ధన్యవాదాలు! జాగ్రత్తగా ఉండండి, త్వరలో మళ్లీ కలుద్దాం!",
+                        "ml": "നിങ്ങളുടെ സമയത്തിന് വളരെ നന്ദി! ശ്രദ്ധിക്കുക, വീണ്ടും കാണാം!",
+                    }.get(language, "Thank you so much for your time. Take care, and we hope to see you again soon!")
+                no_visit_keywords = ["not planning", "maybe later", "not soon"]
+                if any(phrase in last_user_msg for phrase in no_visit_keywords):
+                    return {
+                        "en": "No worries! Whenever you plan in the future, we have a special 20% discount waiting just for you. Hope to see you soon! Take care.",
+                        "hi": "कोई बात नहीं! जब भी आप भविष्य में योजना बनाएं, हमारे पास आपके लिए एक विशेष 20% छूट तैयार है। आशा है कि जल्द ही मिलेंगे! ध्यान रखना।"
+                    }.get(language, "No worries! Whenever you plan in the future, we have a special 20% discount waiting just for you. Hope to see you soon! Take care.")
+                complaint_keywords = ["not happy", "bad experience", "complain", "issue", "problem", "disappointed"]
+                if any(word in last_user_msg for word in complaint_keywords):
+                    return {
+                        "en": "I'm really sorry to hear that. We strive to provide the best experience, and your feedback is valuable to us. Please accept a 30% discount on your next stay as a token of our apology. We hope to have the chance to make it up to you in the future.",
+                        "hi": "यह सुनकर मुझे बहुत खेद है। हम सर्वोत्तम अनुभव प्रदान करने का प्रयास करते हैं, और आपकी प्रतिक्रिया हमारे लिए मूल्यवान है। कृपया हमारी माफी के प्रतीक के रूप में अपनी अगली यात्रा पर 30% छूट स्वीकार करें। हमें उम्मीद है कि भविष्य में इसे सुधारने का मौका मिलेगा।"
+                    }.get(language, "I'm really sorry to hear that. We strive to provide the best experience, and your feedback is valuable to us. Please accept a 30% discount on your next stay as a token of our apology. We hope to have the chance to make it up to you in the future.")
+
+                # First assistant reply: strict Turn 1 + Luminare AI (matches Sarvaad-style intro)
+                if context["turn_count"] == 0:
+                    first_turn = {
+                        "en": f"Hi — this is {BRAND_LUMINARE_AI} with Luminare Hotels. How are you today, and are you thinking of visiting us again soon?",
+                        "hi": f"नमस्ते — मैं {BRAND_LUMINARE_AI} से Luminare Hotels की ओर से बोल रहा हूँ। आप आज कैसे हैं, और क्या आप जल्द फिर से आने की सोच रहे हैं?",
+                        "ta": f"வணக்கம் — நான் Luminare Hotels-இலிருந்து {BRAND_LUMINARE_AI}. இன்று எப்படி இருக்கிறீர்கள், விரைவில் மீண்டும் வர திட்டமிருக்கிறீர்களா?",
+                        "te": f"నమస్కారం — నేను Luminare Hotels తరఫున {BRAND_LUMINARE_AI}. ఈరోజు ఎలా ఉన్నారు, త్వరలో మళ్లీ రావాలని అనుకుంటున్నారా?",
+                        "ml": f"നമസ്കാരം — ഞാൻ Luminare Hotels-ൽ നിന്ന് {BRAND_LUMINARE_AI} ആണ്. ഇന്ന് എങ്ങനെയുണ്ട്, വീണ്ടും വരാൻ പ്ലാൻ ചെയ്യുന്നുണ്ടോ?",
+                    }
+                    return self._ensure_complete_spoken_response(
+                        first_turn.get(language, first_turn["en"]),
+                        language,
+                    )
+
+            elif mode == "election":
+
+                if context["turn_count"] == 0:
+                    lm = last_user_msg.strip()
+                    decline = (
+                        "not interested", "don't call", "stop", "busy", "not voting",
+                    )
+                    short_refuse = lm in ("no", "nope", "nah", "no.", "nope.")
+                    if not short_refuse and not any(d in last_user_msg for d in decline):
+                        first_turn = {
+                            "en": f"Hi — this is {BRAND_LUMINARE_AI} with Luminare Party. How are you doing, and would you be open to a quick chat about the upcoming election?",
+                            "hi": f"नमस्ते — मैं {BRAND_LUMINARE_AI} हूँ, Luminare Party की ओर से। आप कैसे हैं, और क्या आप चुनाव पर एक छोटी बातचीत के लिए तैयार हैं?",
+                        }
+                        return self._ensure_complete_spoken_response(
+                            first_turn.get(language, first_turn["en"]),
+                            language,
+                        )
+
+                if "no" in last_user_msg or "not" in last_user_msg:
+                    return {
+                        "en": "I understand your concerns. Can I share how our policies will benefit you?",
+                        "hi": "मैं आपकी चिंताओं को समझता हूँ। क्या मैं आपको बता सकता हूँ कि हमारी नीतियाँ आपके लिए कैसे लाभकारी होंगी?"
+                    }.get(language, "I understand your concerns. Can I share how our policies will benefit you?")   
+                elif "yes" in last_user_msg or "vote" in last_user_msg:
+                    return {
+                        "en": "That's wonderful! We truly appreciate your support. Together, we can make a difference and create a better future. Thank you for standing with us!",
+                        "hi": "यह शानदार है! हम आपके समर्थन की वास्तव में सराहना करते हैं। साथ मिलकर, हम एक फर्क कर सकते हैं और एक बेहतर भविष्य बना सकते हैं। हमारे साथ खड़े होने के लिए धन्यवाद!"
+                    }.get(language, "That's wonderful! We truly appreciate your support. Together, we can make a difference and create a better future. Thank you for standing with us!")
+
+            elif mode == "feedback":
+                if any(
+                    w in last_user_msg
+                    for w in ("bye", "goodbye", "hang up", "got to go", "gotta go")
+                ):
+                    context["conversation_done"] = True
+                    return self._ensure_complete_spoken_response(
+                        "Thanks for your time with us — take care!",
+                        language,
+                    )
+
+                if context["turn_count"] == 0:
+                    first_turn = {
+                        "en": f"Hi — this is {BRAND_LUMINARE_AI} with Luminare Hospitals. Thanks for speaking with us. Overall, how did your visit go?",
+                        "hi": f"नमस्ते — मैं {BRAND_LUMINARE_AI} हूँ, Luminare Hospitals की ओर से। समय देने के लिए धन्यवाद — आपकी यात्रा कैसी रही?",
+                    }
+                    return self._ensure_complete_spoken_response(
+                        first_turn.get(language, first_turn["en"]),
+                        language,
+                    )
+
+                if "good" in last_user_msg or "great" in last_user_msg or "excellent" in last_user_msg:
+                    return {
+                        "en": "That's really good to hear — thanks for telling me. If anything stood out, I'd love to hear it.",
+                        "hi": "यह सुनकर अच्छा लगा — बताने के लिए धन्यवाद। अगर कुछ खास लगा हो तो बता सकते हैं।"
+                    }.get(language, "That's really good to hear — thanks for telling me. If anything stood out, I'd love to hear it.")
+                elif "bad" in last_user_msg or "not good" in last_user_msg or "poor" in last_user_msg:
+                    return {
+                        "en": "I'm sorry it wasn't great — I hear you. What bothered you most, if you're okay sharing?",
+                        "hi": "यह सुनकर अफ़सोस हुआ — मैं समझ रहा हूँ। अगर आप बता सकें तो सबसे ज़्यादा क्या खराब लगा?"
+                    }.get(language, "I'm sorry it wasn't great — I hear you. What bothered you most, if you're okay sharing?")
+                
             # ============ NORMAL CONVERSATION (LLM-DRIVEN) ============
             
             # Check turn limit (safety cutoff)
             if context["turn_count"] >= 8:
                 logger.info(f"⏹️ Max turns reached ({context['turn_count']}), gracefully ending call")
+                context["conversation_done"] = True
                 lang = context["language"]
                 closing = {
                     "en": "Thank you so much for chatting with us today! We hope to see you again soon. Take care!",
@@ -491,38 +687,47 @@ CODE ONLY:"""
             
             # Build messages with system prompt + language instruction
             lang = context["language"]
-            system_msg = context["messages"][0]["content"]
+            lang_names = {"en": "English", "hi": "Hindi", "ta": "Tamil", "te": "Telugu", "ml": "Malayalam"}
+            lang_instruction = (
+                f"\nRespond in {lang_names.get(lang, 'English')} only. "
+                "1–2 short sentences max, as natural spoken dialogue (not marketing copy)."
+            )
             
-            # FORCEFUL language instruction (language already auto-detected from script)
-            lang_names = {"en": "English", "hi": "हिंदी", "ta": "Tamil", "te": "Telugu", "ml": "Malayalam"}
-            lang_instruction = f"""
-
-🔴 MANDATORY - Respond in {lang_names.get(lang, lang)} ONLY:
-- Always reply in the language the user is currently using: {lang_names.get(lang, lang)}.
-- If the user switches language during the conversation, immediately switch and reply in the user's new language for all future responses.
-- Do NOT translate or repeat in another language unless the user switches language.
-- Do NOT mix languages in a single response.
-- Keep response SHORT: 1-2 sentences.
-- Keep the conversation focused: quickly ask visit intent, then offer, then close naturally.
-- Avoid repetitive probing questions or long back-and-forth.
-
-Conversation so far: {len(context['messages'])} messages. Reference previous answers when responding."""
-            
-            system_with_lang = system_msg + lang_instruction
+            system_with_lang = context["messages"][0]["content"].replace(
+                f"- Respond in {context['language']} only.",
+                f"- Respond in {lang_names.get(lang, 'English')} only."
+            ) + lang_instruction
             
             messages = [{"role": "system", "content": system_with_lang}] + context["messages"][1:]
+            
+            acknowledgments = [
+                "சரி சார்", "சரி", "okay", "ok", "haan", "ha", "accha",
+                "theek hai", "sari", "yes", "yep", "sure", "alright", "fine"
+            ]
+            if any(ack in last_user_msg.lower() for ack in acknowledgments):
+                turn = context["turn_count"]
+                if turn >= 2:
+                    context["conversation_done"] = True
+                    closing = {
+                        "en": "Thank you so much for your time! Have a wonderful day.",
+                        "hi": "आपके समय के लिए बहुत धन्यवाद! आपका दिन शुभ हो।",
+                        "ta": "உங்கள் நேரத்திற்கு மிக்க நன்றி! அருமையான நாள்!",
+                        "te": "మీ సమయానికి చాలా ధన్యవాదాలు! మీకు శుభమైన రోజు.",
+                        "ml": "നിങ്ങളുടെ സമയത്തിന് വളരെ നന്ദി! ഒരു മനോഹരമായ ദിവസം."
+                    }
+                    return closing.get(lang, closing["en"])
             
             try:
                 logger.debug(f"Calling LLM (turn {context['turn_count']}, lang={lang}, msgs={len(messages)})...")
                 logger.debug(f"System prompt length: {len(system_with_lang)}")
                 logger.debug(f"Last 3 messages: {messages[-3:] if len(messages) >= 3 else messages}")
                 
-                # Call LLM using safe wrapper (handles SDK version differences)
+                # Call LLM — tight max_tokens keeps latency low for voice turns
                 agent_text = self.sarvam.call_llm_safe(
                     messages=messages,
-                    model="sarvam-m",
-                    max_tokens=200,  # Allow fuller responses
-                    temperature=0.0  # Deterministic - follow instructions precisely
+                    model="sarvam",
+                    max_tokens=LLM_VOICE_MAX_TOKENS,
+                    temperature=LLM_VOICE_TEMPERATURE,
                 )
                 
                 if not agent_text:
@@ -578,11 +783,20 @@ Conversation so far: {len(context['messages'])} messages. Reference previous ans
             
             import urllib.parse
             
+            tts_lang_map = {
+                "en": "en-IN",
+                "hi": "hi-IN",
+                "ta": "ta-IN",
+                "te": "te-IN",
+                "ml": "ml-IN"
+            }
+            tts_language = tts_lang_map.get(language, "en-IN")
+
             # URL encode the text
             encoded_text = urllib.parse.quote(agent_text.strip())
-            audio_url = f"/api/v1/audio/generate?text={encoded_text}&language={language}"
+            audio_url = f"/api/v1/audio/generate?text={encoded_text}&language={tts_language}"
             
-            logger.info(f"✓ TTS URL generated: {language} ({len(agent_text)} chars)")
+            logger.info(f"✓ TTS URL generated: {tts_language} ({len(agent_text)} chars)")
             return audio_url
         
         except Exception as e:

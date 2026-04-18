@@ -47,26 +47,29 @@ class ServamService:
     
     # Available speakers by language (for bulbul:v3 model)
     AVAILABLE_SPEAKERS = {
-        "en-US": ["aditya", "ritu", "priya"],
-        "en-IN": ["aditya", "ritu", "priya"],
-        "hi-IN": ["aditya", "ritu", "ashutosh"],
-        "ta-IN": ["neha", "rahul", "pooja"],
-        "te-IN": ["rohan", "simran", "kavya"],
-        "kn-IN": ["amit", "dev", "ishita"],
-        "ml-IN": ["shreya", "ratan", "varun"],
-        "mr-IN": ["manan", "sumit", "roopa"],
-        "gu-IN": ["kabir", "aayan", "shubh"],
-        "pa-IN": ["advait", "amelia", "sophia"],
-        "bn-IN": ["anand", "tanya", "tarun"],
-        "es-ES": ["sunny", "mani", "gokul"],
-        "fr-FR": ["vijay", "shruti", "suhani"],
-        "de-DE": ["mohit", "kavitha", "rehan"],
-        "ja-JP": ["soham", "rupali", "niharika"],
-        "zh-CN": ["ashutosh", "advait", "amelia"]
+        "en-US": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "en-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "hi-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "ta-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "te-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "kn-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "ml-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "mr-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "gu-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "pa-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "bn-IN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "es-ES": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "fr-FR": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "de-DE": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "ja-JP": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"],
+        "zh-CN": ["aditya", "ritu", "ashutosh", "priya", "neha", "rahul", "pooja", "rohan", "simran", "kavya", "amit", "dev", "ishita", "shreya", "ratan", "varun", "manan", "sumit", "roopa", "kabir", "aayan", "shubh", "advait", "anand", "tanya", "tarun", "sunny", "mani", "gokul", "vijay", "shruti", "suhani", "mohit", "kavitha", "rehan", "soham", "rupali", "niharika"]
     }
     
     def __init__(self):
         self.api_key = config.SERVAM_API_KEY
+        self.stt_model = config.SERVAM_STT_MODEL
+        self.tts_model = config.SERVAM_TTS_MODEL
+        self.llm_model = config.SERVAM_LLM_MODEL
         self.detected_language = None  # Track last detected language
         
         # Initialize Sarvam AI client with official SDK
@@ -98,22 +101,89 @@ class ServamService:
         if not text:
             return ""
 
-        clean_text = text.strip()
+        extracted = self.extract_llm_text(text)
+        return extracted or ""
 
-        # Remove normal <think>...</think> blocks
-        clean_text = re.sub(r'(?is)<think>.*?</think>\s*', '', clean_text).strip()
+    def extract_llm_text(self, content: str) -> Optional[str]:
+        """Extract actual response, stripping <think> blocks.
+        If think block is incomplete (truncated), return None so caller retries.
+        """
+        if not content:
+            return None
 
-        # If model returned an unterminated <think> block, drop everything from that marker
-        lower_text = clean_text.lower()
-        think_index = lower_text.find("<think>")
-        if think_index >= 0:
-            clean_text = clean_text[:think_index].strip()
+        normalized = content.strip()
+        if '<think>' in normalized:
+            if '</think>' in normalized:
+                result = re.sub(r'(?is)<think>.*?</think>\s*', '', normalized).strip()
+                return result if len(result) >= 3 else None
+            return None
 
-        return clean_text
+        return normalized if len(normalized) >= 3 else None
+
+    def _raw_first_message_content(self, response) -> str:
+        """First choice message.content as string (before stripping thinking)."""
+        try:
+            if hasattr(response, "model_dump"):
+                d = response.model_dump()
+                ch = (d.get("choices") or [{}])[0]
+                msg = ch.get("message") or {}
+                c = msg.get("content")
+                if isinstance(c, str):
+                    return c
+            if hasattr(response, "choices") and response.choices:
+                msg = getattr(response.choices[0], "message", None)
+                if msg is not None:
+                    c = getattr(msg, "content", None)
+                    if isinstance(c, str):
+                        return c
+        except Exception:
+            pass
+        return ""
+
+    def _parse_chat_response_with_optional_retry(
+        self, messages: list, max_tokens: int, temperature: float, response
+    ) -> Optional[str]:
+        """
+        Parse speakable text; if the model only emitted <redacted_thinking> (often truncated),
+        retry once with an explicit spoken-only instruction.
+        """
+        text = self._sanitize_llm_text(self._extract_text_from_llm_response(response))
+        if text:
+            return text
+        raw = self._raw_first_message_content(response)
+        if not raw or "<redacted_thinking>" not in raw:
+            return None
+        logger.warning(
+            "LLM returned thinking-only or truncated thinking — retrying with spoken-only instruction"
+        )
+        retry_msgs = list(messages) + [
+            {
+                "role": "user",
+                "content": (
+                    "Reply with ONLY the exact words you would speak aloud to the caller "
+                    "in 1–2 short sentences. Do not use thinking tags, internal reasoning, "
+                    "or <think>."
+                ),
+            }
+        ]
+        retry_tokens = max(max_tokens, 512)
+        response2 = self.client.chat.completions(
+            messages=retry_msgs,
+            model=self.llm_model,
+            max_tokens=retry_tokens,
+            temperature=min(temperature, 0.25),
+        )
+        text2 = self._sanitize_llm_text(self._extract_text_from_llm_response(response2))
+        return text2 if text2 else None
 
     def _extract_text_from_llm_response(self, response) -> str:
         """Extract assistant text from varied SDK response formats."""
         try:
+            def _normalize_text(value: str) -> str:
+                if isinstance(value, str) and value.strip():
+                    return self.extract_llm_text(value) or ""
+                return ""
+
             def _extract_from_dict_payload(payload: dict) -> str:
                 if not isinstance(payload, dict):
                     return ""
@@ -128,7 +198,9 @@ class ServamService:
                             for key in ("content", "reasoning_content", "text"):
                                 value = message.get(key)
                                 if isinstance(value, str) and value.strip():
-                                    return value
+                                    normalized_text = _normalize_text(value)
+                                    if normalized_text:
+                                        return normalized_text
                                 if isinstance(value, list):
                                     parts = [
                                         item.get("text", "")
@@ -137,18 +209,24 @@ class ServamService:
                                     ]
                                     joined = " ".join(part.strip() for part in parts if part and part.strip()).strip()
                                     if joined:
-                                        return joined
+                                        normalized_text = _normalize_text(joined)
+                                        if normalized_text:
+                                            return normalized_text
 
                         for key in ("text", "content", "output_text"):
                             value = first.get(key)
                             if isinstance(value, str) and value.strip():
-                                return value
+                                normalized_text = _normalize_text(value)
+                                if normalized_text:
+                                    return normalized_text
 
                 # Top-level direct keys
                 for key in ("output_text", "text", "content", "reasoning_content"):
                     value = payload.get(key)
                     if isinstance(value, str) and value.strip():
-                        return value
+                        normalized_text = _normalize_text(value)
+                        if normalized_text:
+                            return normalized_text
 
                 # Recursive best-effort scan for first non-empty text-like field
                 preferred_keys = {"content", "text", "output_text", "reasoning_content", "transcript"}
@@ -157,7 +235,9 @@ class ServamService:
                     if isinstance(node, dict):
                         for key, value in node.items():
                             if key in preferred_keys and isinstance(value, str) and value.strip():
-                                return value
+                                normalized_text = _normalize_text(value)
+                                if normalized_text:
+                                    return normalized_text
                         for value in node.values():
                             found = _recursive_scan(value)
                             if found:
@@ -186,12 +266,16 @@ class ServamService:
                 if message is not None:
                     content = getattr(message, "content", None)
                     if isinstance(content, str) and content.strip():
-                        return content
+                        normalized_text = _normalize_text(content)
+                        if normalized_text:
+                            return normalized_text
 
                     # Some Sarvam responses may populate reasoning_content when content is empty
                     reasoning_content = getattr(message, "reasoning_content", None)
                     if isinstance(reasoning_content, str) and reasoning_content.strip():
-                        return reasoning_content
+                        normalized_text = _normalize_text(reasoning_content)
+                        if normalized_text:
+                            return normalized_text
 
                     if isinstance(content, list):
                         parts = []
@@ -204,7 +288,9 @@ class ServamService:
                                 parts.append(item_text.strip())
                         joined = " ".join(parts).strip()
                         if joined:
-                            return joined
+                            normalized_text = _normalize_text(joined)
+                            if normalized_text:
+                                return normalized_text
 
                 # delta.content (stream-like shapes)
                 delta = getattr(first_choice, "delta", None)
@@ -216,35 +302,84 @@ class ServamService:
                 # text fallback
                 choice_text = getattr(first_choice, "text", None)
                 if isinstance(choice_text, str) and choice_text.strip():
-                    return choice_text
+                    normalized_text = _normalize_text(choice_text)
+                    if normalized_text:
+                        return normalized_text
 
             # Top-level text fallbacks
             for attr in ("output_text", "text", "content"):
                 value = getattr(response, attr, None)
                 if isinstance(value, str) and value.strip():
-                    return value
+                    normalized_text = _normalize_text(value)
+                    if normalized_text:
+                        return normalized_text
 
             # Pydantic model fallback (Sarvam SDK responses are often pydantic models)
             if hasattr(response, "model_dump"):
                 try:
                     dumped = response.model_dump()
+                    logger.debug(f"Pydantic model_dump: {dumped}")
                     extracted = _extract_from_dict_payload(dumped)
                     if extracted:
                         return extracted
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"model_dump failed: {e}")
 
             # Some SDK objects expose richer payload only through JSON serialization
             if hasattr(response, "model_dump_json"):
                 try:
                     dumped_json = response.model_dump_json()
+                    logger.debug(f"Pydantic model_dump_json: {dumped_json}")
                     if isinstance(dumped_json, str) and dumped_json.strip():
                         dumped = json.loads(dumped_json)
                         extracted = _extract_from_dict_payload(dumped)
                         if extracted:
                             return extracted
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug(f"model_dump_json failed: {e}")
+
+            # Try direct attribute access for Sarvam response
+            if hasattr(response, 'choices') and response.choices:
+                choice = response.choices[0]
+                # Try choice.text first (some APIs return text directly in choice)
+                if hasattr(choice, 'text') and choice.text:
+                    if isinstance(choice.text, str) and choice.text.strip():
+                        logger.debug("Found content via choice.text")
+                        return choice.text
+                if hasattr(choice, 'message') and choice.message:
+                    message = choice.message
+                    for attr in ['content', 'text', 'reasoning_content']:
+                        if hasattr(message, attr):
+                            content = getattr(message, attr)
+                            if content and isinstance(content, str) and content.strip():
+                                logger.debug(f"Found content via attribute access: {attr}")
+                                normalized_text = _normalize_text(content)
+                                if normalized_text:
+                                    return normalized_text
+            if hasattr(response, 'text') and response.text:
+                if isinstance(response.text, str) and response.text.strip():
+                    logger.debug("Found content via response.text")
+                    return response.text
+
+            # Try accessing as dict if it's dict-like
+            if isinstance(response, dict):
+                extracted = _extract_from_dict_payload(response)
+                if extracted:
+                    return extracted
+
+            # Last resort: try str() representation
+            response_str = str(response)
+            logger.debug(f"Response str representation: {response_str[:200]}...")
+            
+            # Look for content in string representation
+            import re
+            content_match = re.search(r"'content':\s*'([^']+)'", response_str)
+            if content_match:
+                return content_match.group(1)
+            
+            content_match = re.search(r'content=([^,\s]+)', response_str)
+            if content_match:
+                return content_match.group(1).strip("'\"")
 
             # Pydantic v1 fallback
             if hasattr(response, "dict"):
@@ -260,7 +395,7 @@ class ServamService:
         except Exception:
             return ""
     
-    def call_llm_safe(self, messages: list, model: str = "sarvam-m", max_tokens: int = 200, temperature: float = 0.0) -> Optional[str]:
+    def call_llm_safe(self, messages: list, model: str = "sarvam-m", max_tokens: int = 1024, temperature: float = 0.0) -> Optional[str]:
         """
         Safely call Sarvam LLM with error handling for different SDK versions
         
@@ -288,17 +423,28 @@ class ServamService:
                     # Try the .completions() method directly
                     response = self.client.chat.completions(
                         messages=messages,
-                        model=model,
+                        model=self.llm_model,
                         max_tokens=max_tokens,
                         temperature=temperature
                     )
 
-                    text = self._sanitize_llm_text(self._extract_text_from_llm_response(response))
+                    text = self._parse_chat_response_with_optional_retry(
+                        messages, max_tokens, temperature, response
+                    )
                     if text:
                         logger.debug(f"✓ LLM response: {text[:80]}...")
                         return text
 
                     logger.warning(f"⚠️ LLM returned empty/unsupported response format: {type(response)}")
+                    # Debug: try to dump the response
+                    try:
+                        if hasattr(response, "model_dump"):
+                            dumped = response.model_dump()
+                            logger.debug(f"Response model_dump: {dumped}")
+                        else:
+                            logger.debug(f"Response str: {str(response)[:500]}...")
+                    except Exception as e:
+                        logger.debug(f"Could not dump response: {e}")
                     return None
                         
                 except AttributeError as ae1:
@@ -306,12 +452,14 @@ class ServamService:
                     # Fallback: try .create() method
                     response = self.client.chat.completions.create(
                         messages=messages,
-                        model=model,
+                        model=self.llm_model,
                         max_tokens=max_tokens,
                         temperature=temperature
                     )
 
-                    text = self._sanitize_llm_text(self._extract_text_from_llm_response(response))
+                    text = self._parse_chat_response_with_optional_retry(
+                        messages, max_tokens, temperature, response
+                    )
                     if text:
                         logger.debug(f"✓ LLM response (.create()): {text[:80]}...")
                         return text
@@ -365,7 +513,7 @@ class ServamService:
                 t0 = time.monotonic()
                 response = self.client.speech_to_text.transcribe(
                     file=audio_file,
-                    model="saaras:v3",
+                    model=self.stt_model,
                     mode=mode,
                     language_code=language
                 )
@@ -405,15 +553,15 @@ class ServamService:
         return None
     
     def text_to_speech(self, text: str, target_language: str = "en-IN", 
-                      speaker: str = "aditya", model: str = "bulbul:v3") -> Optional[bytes]:
+                      speaker: str = "aditya", model: str = None) -> Optional[bytes]:
         """
         Convert text to speech using Sarvam TTS with language-specific speaker
         
         Args:
             text: Text to convert
             target_language: Target language code (e.g., "en-IN", "hi-IN")
-            speaker: Speaker name (e.g., "aditya", "diya" for English; varies by language)
-            model: TTS model to use
+            speaker: Speaker name (e.g., "anushka", "abhilash" for English; varies by language)
+            model: TTS model to use (defaults to config value)
             
         Returns:
             Audio bytes or None if failed
@@ -421,6 +569,9 @@ class ServamService:
         if not self.client:
             logger.error("Sarvam AI client not initialized")
             return None
+        
+        if model is None:
+            model = self.tts_model
         
         try:
             # Validate speaker for language
@@ -431,7 +582,7 @@ class ServamService:
             
             # Call Sarvam API with official SDK
             # API: convert(text, target_language_code, speaker, model, output_audio_codec)
-            logger.debug(f"Calling TTS: text={text[:40]}..., lang={target_language}, speaker={speaker}")
+            logger.debug(f"Calling TTS: text={text[:40]}..., lang={target_language}, speaker={speaker}, model={model}")
             response = self.client.text_to_speech.convert(
                 text=text,
                 target_language_code=target_language,
@@ -630,8 +781,8 @@ class ServamService:
             # Use call_llm_safe() for SDK compatibility
             response_text = self.call_llm_safe(
                 messages=messages,
-                model="sarvam-m",
-                max_tokens=500,
+                model=self.llm_model,
+                max_tokens=2048,
                 temperature=0.7
             )
             
@@ -889,3 +1040,14 @@ Respond with exactly one word: positive, negative, or neutral"""
         except Exception as e:
             logger.error(f"Error in multilingual_call_script: {str(e)}")
             return None
+
+
+_servam_singleton: Optional[ServamService] = None
+
+
+def get_servam_service() -> ServamService:
+    """Single shared ServamService per process (one Sarvam SDK init, shared HTTP client)."""
+    global _servam_singleton
+    if _servam_singleton is None:
+        _servam_singleton = ServamService()
+    return _servam_singleton

@@ -4,4 +4,5 @@ export const NAV = [
   { id: "call",      label: "Call Trigger", icon: "phone" },
   { id: "reports",   label: "Reports",  icon: "reports" },
   { id: "upload",    label: "Upload",   icon: "upload" },
+  { id: "samvaad",   label: "Samvaad",  icon: "samvaad" },
 ];

@@ -6,6 +6,11 @@ export const api = {
   // 📊 CUSTOMERS
   // =========================
 
+  // samvaad streaming endpoint
+  getSamvaadStreamURL: () => {
+    return `${BASE_URL}/api/v1/stream/web/ws`;
+  },
+
   // Get all customers
   getCustomers: async () => {
     const res = await fetch(`${BASE_URL}/api/v1/customers`);
@@ -167,3 +172,4 @@ export const api = {
     return res.json();
   },
 };
+
