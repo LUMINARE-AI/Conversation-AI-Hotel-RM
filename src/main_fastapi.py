@@ -13,6 +13,9 @@ from src.services.twilio_service import TwilioService
 from src.agents.relationship_manager_agent import RelationshipManagerAgent
 from sqlalchemy.orm import Session
 from src.models.database import init_db, get_db, Customer, CallHistory, CallSchedule
+from src.api.auth_routes import router as auth_router
+from src.auth.api_middleware import VoiceLabsAPIMiddleware
+from src.auth.bootstrap import seed_default_admin
 from src.api.web_ws import router as web_ws_router
 from config.config import get_config
 from pydantic import BaseModel
@@ -52,6 +55,11 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     # 🔥 Startup logic
     try:
+        init_db()
+        seed_default_admin()
+    except Exception as e:
+        print("❌ Auth DB init error:", e)
+    try:
         initialize_dummy_data()
         print("✅ Dummy data initialized")
     except Exception as e:
@@ -71,14 +79,21 @@ app = FastAPI(
 async def options_handler(full_path: str, request: Request):
     return Response(status_code=200)
 
-# Add CORS middleware
+# CORS: credentials require explicit origins (not "*")
+_cors_origins = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000",
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in _cors_origins if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(VoiceLabsAPIMiddleware)
 
 config = get_config()
 
@@ -102,6 +117,7 @@ audio_dir.mkdir(exist_ok=True)
 app.mount("/audio", StaticFiles(directory=str(audio_dir)), name="audio")
 
 app.include_router(web_ws_router)
+app.include_router(auth_router)
 
 # Pydantic models for request/response
 

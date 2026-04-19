@@ -1,1 +1,140 @@
 @import "tailwindcss";
+
+/* Shared page entrance (used across pages) */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.web-project-card-enter {
+  animation: fadeUp 0.55s ease both forwards;
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes fadeUp {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .web-project-card-enter {
+    animation-duration: 0.01ms;
+    animation-delay: 0s !important;
+    opacity: 1;
+  }
+
+  .footer-wave-drift-slow,
+  .footer-wave-drift-mid,
+  .footer-wave-drift-front {
+    animation: none !important;
+  }
+
+  .footer-fade-in {
+    animation-duration: 0.01ms !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* Footer — layered SVG wave drift (parallax-style speeds) */
+.footer-wave-layer {
+  will-change: transform;
+}
+
+.footer-wave-drift-slow {
+  animation: footerWaveDrift 24s linear infinite;
+}
+
+.footer-wave-drift-mid {
+  animation: footerWaveDrift 17s linear infinite reverse;
+}
+
+.footer-wave-drift-front {
+  animation: footerWaveDrift 12s linear infinite;
+}
+
+@keyframes footerWaveDrift {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.footer-fade-in {
+  animation: footerContentFade 0.85s ease forwards;
+}
+
+@keyframes footerContentFade {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Home — hero ambient orbs */
+.hero-orb {
+  animation: heroOrbPulse 16s ease-in-out infinite;
+}
+
+.hero-orb-delay {
+  animation-delay: -8s;
+}
+
+@keyframes heroOrbPulse {
+  0%,
+  100% {
+    opacity: 0.42;
+    transform: scale(1) translate(0, 0);
+  }
+  50% {
+    opacity: 0.62;
+    transform: scale(1.06) translate(12px, -10px);
+  }
+}
+
+/* Home — Voice-Labs waveform bars */
+.home-wave-bar {
+  transform-origin: bottom center;
+  animation: homeWaveBar 1.15s ease-in-out infinite;
+}
+
+@keyframes homeWaveBar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-orb,
+  .hero-orb-delay {
+    animation: none;
+    opacity: 0.45;
+    transform: none;
+  }
+
+  .home-wave-bar {
+    animation: none;
+    transform: scaleY(0.65);
+  }
+}

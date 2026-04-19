@@ -373,7 +373,7 @@ export default function Samvaad() {
       <div className="flex items-center justify-between mb-10">
         <div>
           <h1 className="text-[26px] font-extrabold text-slate-900 tracking-tight leading-tight">
-            Experience Samvaad
+            Experience Luminare AI Voice-Labs
           </h1>
           <p className="text-slate-400 text-sm font-medium mt-1">
             Samvaad-style voice — Luminare AI & Sarvam · natural two-way conversation

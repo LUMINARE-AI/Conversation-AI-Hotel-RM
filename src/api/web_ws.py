@@ -12,6 +12,8 @@ import wave
 import numpy as np
 
 from src.services.conversational_call_handler import ConversationalCallManager
+from src.auth.constants import ACCESS_TOKEN_COOKIE
+from src.auth.jwt_utils import safe_decode
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -33,6 +35,11 @@ def is_real_speech(audio_bytes: bytes, threshold: float = 200.0) -> bool:
 
 @router.websocket("/api/v1/stream/web/ws")
 async def web_voice_ws(websocket: WebSocket):
+    token = websocket.cookies.get(ACCESS_TOKEN_COOKIE) or websocket.query_params.get("token")
+    if not token or not safe_decode(token):
+        await websocket.close(code=1008, reason="Authentication required")
+        return
+
     await websocket.accept()
 
     # Session create (like socket.id)
