@@ -574,4 +574,4 @@ This project is proprietary to Beacon Hotel. All rights reserved.
 
 ---
 
-**Made with ❤️ for Beacon Hotel**
+**Made with ❤️ for LuminareAI**
