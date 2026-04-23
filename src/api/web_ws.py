@@ -23,12 +23,31 @@ conv_manager = ConversationalCallManager()
 sarvam = conv_manager.sarvam  # Reuse the same instance
 
 
-def is_real_speech(audio_bytes: bytes, threshold: float = 200.0) -> bool:
-    """False if whole utterance is silence / low energy (filters clicks and tiny noises)."""
+def is_real_speech(audio_bytes: bytes, sample_rate: int, threshold: float = 80.0) -> bool:
+    """
+    Heuristic VAD for full captured utterance.
+    Uses short-window RMS so trailing silence doesn't zero out the overall RMS.
+    """
     try:
-        audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
-        rms = np.sqrt(np.mean(audio_array ** 2))
-        return rms > threshold
+        if not audio_bytes:
+            return False
+        sr = int(sample_rate or 16000)
+        audio = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32)
+        if audio.size < 400:
+            return False
+
+        # 20ms windows (scaled by sample rate)
+        win = max(160, int(sr * 0.02))
+        if audio.size < win:
+            rms = float(np.sqrt(np.mean(audio**2)))
+            return rms > threshold
+
+        n = (audio.size // win) * win
+        frames = audio[:n].reshape((-1, win))
+        rms = np.sqrt(np.mean(frames**2, axis=1))
+        # Require a few windows above threshold to avoid clicks/taps.
+        voiced = int(np.sum(rms > threshold))
+        return voiced >= 3
     except Exception:
         return False
 
@@ -55,13 +74,17 @@ async def web_voice_ws(websocket: WebSocket):
     voice_streak = 0
 
     # audioop.rms on int16: silence/noise often <70; speech usually clears ~100+ on chunks
-    VOICE_THRESHOLD = 100
+    # For browsers/laptops with aggressive noise suppression, RMS can be lower, so keep threshold modest.
+    VOICE_THRESHOLD = 80
     # Consecutive loud chunks before marking speech (reduces taps / faint noise)
     MIN_VOICE_STREAK = 2
-    SILENCE_LIMIT = 10       # quiet chunks after speech before end-of-utterance
+    # If this is too large, we wait too long before we start STT/LLM/TTS.
+    # Keep moderate; we still have max_buffer_bytes as a safety cap.
+    # Important: browser worklet chunks are tiny (~8ms at 16k). Too-low values cut users mid-sentence.
+    SILENCE_LIMIT = 32       # ~250ms of quiet after speech before end-of-utterance
     # Base thresholds at 16 kHz; scaled by actual client sample rate below
-    _BASE_MIN_BYTES = 10240  # ~0.32s at 16 kHz — reject very short noise bursts
-    _BASE_MAX_BYTES = 80000  # ~2.5s at 16 kHz — safety cap for end-of-utterance
+    _BASE_MIN_BYTES = 4096   # ~0.13s at 16 kHz — accept short real utterances like "yes", "no"
+    _BASE_MAX_BYTES = 140000 # ~4.4s at 16 kHz — allow longer sentences before forcing flush
 
     # STT hallucination prevention
     last_transcript = ""
@@ -81,9 +104,11 @@ async def web_voice_ws(websocket: WebSocket):
             data = await websocket.receive_text()
             payload = json.loads(data)
 
-            # INIT MESSAGE — set mode and initialize conversation
+            # INIT MESSAGE — initialize conversation (context-driven)
             if payload.get("type") == "init":
                 mode = payload.get("mode", "hotel")
+                context_type = payload.get("context_type") or payload.get("contextType")
+                context_data = payload.get("context_data") or payload.get("contextData") or {}
                 sr = payload.get("sample_rate") or payload.get("sampleRate")
                 if isinstance(sr, (int, float)) and 8000 <= int(sr) <= 96000:
                     client_sample_rate = int(sr)
@@ -92,10 +117,12 @@ async def web_voice_ws(websocket: WebSocket):
                     conv_id,
                     customer_id,
                     "en",
-                    mode=mode or "hotel"
+                    context_type=context_type,
+                    context_data=context_data,
+                    mode=mode or "hotel",
                 )
                 conv_initialized = True
-                logger.info(f"🎯 Mode selected: {mode}")
+                logger.info(f"🎯 Context selected: {context_type or 'none'} (mode={mode})")
                 continue
 
             # Skip audio if conversation not initialized yet
@@ -153,6 +180,15 @@ async def web_voice_ws(websocket: WebSocket):
 
             logger.info(f"🛑 Speech ended → processing ({len(audio_buffer)} bytes)")
 
+            # If we just played TTS, ignore any buffered echo/noise and reset fast.
+            if time.monotonic() < post_tts_cooldown_until:
+                audio_buffer.clear()
+                voice_active = False
+                silence_count = 0
+                voice_streak = 0
+                logger.info("🔇 Dropping buffer — post-TTS cooldown")
+                continue
+
             # Skip if buffer too small (background noise, not real speech)
             if len(audio_buffer) < min_audio_bytes:
                 logger.info("⚠️ Buffer too small, skipping")
@@ -170,12 +206,8 @@ async def web_voice_ws(websocket: WebSocket):
             voice_streak = 0
 
             # Check for real speech (not silence/noise)
-            if not is_real_speech(captured_audio):
+            if not is_real_speech(captured_audio, sample_rate=client_sample_rate):
                 logger.info("🔇 Skipping STT — silence/noise detected")
-                continue
-
-            if time.monotonic() < post_tts_cooldown_until:
-                logger.info("🔇 Skipping STT — post-TTS cooldown")
                 continue
 
             # STT — run in thread executor (non-blocking)
@@ -250,8 +282,19 @@ async def web_voice_ws(websocket: WebSocket):
             # Add to conversation history
             conv_manager.append_user_message(conv_id, user_text)
 
-            # Generate LLM response
-            agent_text = conv_manager.generate_next_response(conv_id)
+            # Generate LLM response (prefer Gemini if configured; fallback to Sarvam)
+            # Run in executor so the websocket loop doesn't stall.
+            loop = asyncio.get_running_loop()
+            agent_text = await loop.run_in_executor(
+                None,
+                lambda: conv_manager.generate_next_response(
+                    conv_id,
+                    prefer_gemini=True,
+                    max_tokens=192,
+                    temperature=0.25,
+                    history_limit=6,
+                ),
+            )
 
             if not agent_text:
                 logger.info("⏹️ No agent response — conversation ended or empty")
@@ -270,7 +313,11 @@ async def web_voice_ws(websocket: WebSocket):
                 
             # Send audio response back to browser
             await websocket.send_bytes(audio_out)
-            post_tts_cooldown_until = time.monotonic() + 0.45
+            # Dynamic cooldown: browser resumes mic after audio ends, but we don't have an explicit signal.
+            # Approximate from payload size to reduce echo-driven empty STT calls.
+            now = time.monotonic()
+            approx_play_s = len(audio_out) / 50000.0  # heuristic
+            post_tts_cooldown_until = now + max(0.7, min(2.2, approx_play_s))
             logger.info(f"✅ Sent {len(audio_out)} bytes of audio to client")
 
     except WebSocketDisconnect:

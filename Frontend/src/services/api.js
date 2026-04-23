@@ -148,13 +148,21 @@ export const api = {
     return res.json();
   },
 
-  triggerCall: async (customerId, language = "en", customPrompt = "") => {
+  triggerCall: async (
+    customerId,
+    language = "en",
+    customPrompt = "",
+    contextType = null,
+    contextData = {}
+  ) => {
     const res = await apiFetch("/api/v1/calls/test-livekit-sip", {
       method: "POST",
       body: JSON.stringify({
         customer_id: customerId,
         language,
         custom_prompt: customPrompt,
+        context_type: contextType,
+        context_data: contextData,
       }),
     });
     return res.json();

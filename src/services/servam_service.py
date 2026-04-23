@@ -552,8 +552,8 @@ class ServamService:
         logger.error(f"STT failed after {retries} attempts: {last_err}")
         return None
     
-    def text_to_speech(self, text: str, target_language: str = "en-IN", 
-                      speaker: str = "aditya", model: str = None) -> Optional[bytes]:
+    def text_to_speech(self, text: str, target_language: str = "en-IN",
+                      speaker: str = "priya", model: str = None) -> Optional[bytes]:
         """
         Convert text to speech using Sarvam TTS with language-specific speaker
         
@@ -574,10 +574,16 @@ class ServamService:
             model = self.tts_model
         
         try:
+            t0 = time.perf_counter()
             # Validate speaker for language
             available = self.get_available_speakers(target_language)
             if speaker not in available:
-                speaker = available[0] if available else "aditya"
+                # Prefer a consistent female voice if available, otherwise fallback to first available.
+                preferred = "priya"
+                if preferred in available:
+                    speaker = preferred
+                else:
+                    speaker = available[0] if available else "priya"
                 logger.warning(f"Speaker adjusted to {speaker} for language {target_language}")
             
             # Call Sarvam API with official SDK
@@ -611,6 +617,8 @@ class ServamService:
                             try:
                                 audio_data = base64.b64decode(audio_item)
                                 if len(audio_data) > 0:
+                                    dt_ms = (time.perf_counter() - t0) * 1000
+                                    logger.info(f"[TIMING] TTS: {dt_ms:.0f}ms, chars={len(text)}, bytes={len(audio_data)}")
                                     logger.info(f"✓ TTS successful: {target_language} ({speaker}), {len(audio_data)} bytes (base64 decoded)")
                                     return audio_data
                             except Exception as e:
@@ -618,6 +626,8 @@ class ServamService:
                         
                         # If it's bytes, use directly
                         elif isinstance(audio_item, bytes) and len(audio_item) > 0:
+                            dt_ms = (time.perf_counter() - t0) * 1000
+                            logger.info(f"[TIMING] TTS: {dt_ms:.0f}ms, chars={len(text)}, bytes={len(audio_item)}")
                             logger.info(f"✓ TTS successful: {target_language} ({speaker}), {len(audio_item)} bytes (direct)")
                             return audio_item
                     

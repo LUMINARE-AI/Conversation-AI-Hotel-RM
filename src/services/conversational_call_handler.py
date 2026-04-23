@@ -21,6 +21,8 @@ Instead: Single webhook handles all steps, LLM drives conversation dynamically
 import logging
 import json
 import re
+import os
+import time
 from datetime import datetime
 from statistics import mode
 from typing import Optional, Dict, List, Tuple
@@ -32,8 +34,16 @@ from config.config import get_config
 logger = logging.getLogger(__name__)
 config = get_config()
 
-# Voice LLM: enough headroom (reasoning models); moderate temp for natural phone tone
-LLM_VOICE_MAX_TOKENS = 512
+# Optional: Google Gemini (preferred LLM in some flows)
+try:
+    from google import genai
+    from google.genai import types as genai_types
+    GOOGLE_GENAI_AVAILABLE = True
+except Exception:
+    GOOGLE_GENAI_AVAILABLE = False
+
+# Voice LLM: keep low for fast spoken turns
+LLM_VOICE_MAX_TOKENS = 256
 LLM_VOICE_TEMPERATURE = 0.35
 
 # Samvaad / branding — spoken in first turn templates
@@ -53,14 +63,86 @@ class ConversationalCallManager:
         self.sarvam = get_servam_service()
         self.agent = RelationshipManagerAgent()
         self.session = get_session()
+        self._gemini_client = None
+
+    def _get_gemini_client(self):
+        """Lazily initialize a Google Gemini client if configured."""
+        if self._gemini_client is not None:
+            return self._gemini_client
+
+        google_api_key = getattr(config, "GOOGLE_API_KEY", "") or ""
+        if not google_api_key or not GOOGLE_GENAI_AVAILABLE:
+            self._gemini_client = None
+            return None
+
+        try:
+            self._gemini_client = genai.Client(api_key=google_api_key)
+            return self._gemini_client
+        except Exception as e:
+            logger.warning(f"[LLM] Failed to init Gemini client: {type(e).__name__}: {e}")
+            self._gemini_client = None
+            return None
+
+    def _convert_messages_for_gemini(self, messages: list):
+        """Convert OpenAI-style messages to Gemini format."""
+        system_instruction = None
+        contents = []
+        for msg in messages:
+            role = msg.get("role")
+            text = msg.get("content", "")
+            if not text:
+                continue
+            if role == "system":
+                system_instruction = text
+            elif role == "user":
+                contents.append(
+                    genai_types.Content(
+                        role="user",
+                        parts=[genai_types.Part(text=text)],
+                    )
+                )
+            elif role == "assistant":
+                contents.append(
+                    genai_types.Content(
+                        role="model",
+                        parts=[genai_types.Part(text=text)],
+                    )
+                )
+        return system_instruction, contents
+
+    def _call_gemini_llm(self, messages: list, max_tokens: int, temperature: float) -> Optional[str]:
+        """Call Gemini for a short spoken reply (fallback to Sarvam if this fails)."""
+        client = self._get_gemini_client()
+        if not client:
+            return None
+
+        gemini_model = os.getenv("GOOGLE_GEMINI_MODEL", "gemini-2.5-flash")
+        try:
+            t0 = time.perf_counter()
+            system_instruction, contents = self._convert_messages_for_gemini(messages)
+            resp = client.models.generate_content(
+                model=gemini_model,
+                contents=contents,
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    max_output_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+            )
+            dt_ms = (time.perf_counter() - t0) * 1000
+            text = (getattr(resp, "text", "") or "").strip()
+            logger.info(f"[TIMING] LLM (Gemini {gemini_model}): {dt_ms:.0f}ms, out_chars={len(text)}")
+            return text or None
+        except Exception as e:
+            logger.warning(f"[LLM] Gemini error: {type(e).__name__}: {e}")
+            return None
     
     def _should_switch_language(self, current_language: str, detected_language: str, text: str) -> bool:
         """
         Decide whether to switch conversation language for this turn.
 
-        Prevent abrupt switches on short/ambiguous utterances like "और", "ok", "haan".
-        Only allow switching between English and Hindi freely; other languages
-        require very strong evidence (STT often hallucinates ta/te/ml/kn on English speech).
+        Prevent abrupt switches on short/ambiguous utterances like "ok", "haan".
+        Keep one language per call unless the user clearly switches.
         """
         if not detected_language or detected_language == current_language:
             return False
@@ -69,10 +151,8 @@ class ConversationalCallManager:
         if not stripped_text:
             return False
 
-        # Only allow en↔hi switches freely; block ta/te/ml/kn unless overwhelming evidence
-        allowed_easy_switch = {"en", "hi", "ta", "te", "ml"}
-        if detected_language not in allowed_easy_switch:
-            logger.info(f"🌍 Blocking language switch to {detected_language} (only en/hi allowed without strong evidence)")
+        # Avoid switching on fillers/acknowledgements.
+        if self._is_filler_utterance(stripped_text):
             return False
 
         words = stripped_text.split()
@@ -80,16 +160,16 @@ class ConversationalCallManager:
         latin_letters = sum(1 for c in stripped_text if c.isascii() and c.isalpha())
         devanagari_chars = sum(1 for c in stripped_text if 0x0900 <= ord(c) <= 0x097F)
 
-        # Require stronger signal for very short interjections.
-        is_short_utterance = text_len < 12 or len(words) <= 2
-        if is_short_utterance:
-            if detected_language == "en":
-                return latin_letters >= 6
-            if detected_language == "hi":
-                return devanagari_chars >= 6
+        # Require strong evidence + enough text (STT/script detection can be noisy).
+        if text_len < 16 or len(words) < 3:
             return False
 
-        return True
+        if detected_language == "en":
+            return latin_letters >= 10
+        if detected_language == "hi":
+            return devanagari_chars >= 10
+        # For other Indian languages, be extra conservative.
+        return text_len >= 28 and len(words) >= 6
 
     def _ensure_complete_spoken_response(self, text: str, language: str) -> str:
         """
@@ -121,6 +201,27 @@ class ConversationalCallManager:
 
         return f"{normalized}."
 
+    def _tighten_voice_reply(self, text: str, language: str, max_words: int = 12) -> str:
+        """
+        Hard cap for WebSocket voice: keep responses short + human-like.
+        This reduces TTS latency and prevents long "written" answers.
+        """
+        t = (text or "").strip()
+        if not t:
+            return ""
+
+        # Keep at most the first two sentence-ish chunks (still voice-friendly, less robotic).
+        parts = re.split(r"(?<=[.!?।])\s+", t)
+        parts = [p.strip() for p in parts if p and p.strip()]
+        first = " ".join(parts[:2]).strip() if parts else t
+
+        # Word cap (works acceptably for en/hi; whitespace-tokenization is OK here).
+        words = first.split()
+        if max_words and len(words) > max_words:
+            first = " ".join(words[:max_words]).rstrip()
+
+        return first
+
     def _is_filler_utterance(self, text: str) -> bool:
         """True if the user only said filler / deictic words (e.g. 'Just', 'This') with no substance."""
         t = (text or "").strip().lower()
@@ -141,50 +242,186 @@ class ConversationalCallManager:
 
     # ==================== Samvaad Detection ====================  
     def get_system_prompt(self, mode: str) -> str:
-        voice = """
-VOICE (Samvaad-style — you are """ + BRAND_LUMINARE_AI + """, a natural voice assistant powered by Sarvam. Sound human on a live call, not a chatbot):
-- Short, natural sentences. Use contractions: I'm, we're, that's, don't, it's.
-- Warm and calm; avoid stiff corporate openers every time — vary your wording.
-- React to what they *just* said; one clear thought per reply.
-- Never repeat your *previous* reply verbatim. If they only say "okay", "just", or "this", acknowledge briefly and move toward a clean close — do not paste the same long paragraph again.
-- Do not list policies unless they ask. No emojis.
-- Output ONLY the words you would speak aloud. Never use <redacted_thinking>, hidden reasoning, or step-by-step planning in your reply.
-"""
-        if mode == "hotel":
-            return """You are """ + BRAND_LUMINARE_AI + """ for Luminare Hotels — like Sarvam Samvaad: clear, brief, friendly phone conversation with a guest.
-""" + voice + """
-              CONVERSATION FLOW (follow this structure):
-                Turn 1: Acknowledge how they are doing, then ask "Are you planning to visit us again soon?"
-                Turn 2 (if they say YES): "That's wonderful! As a valued guest, we have an exclusive 20% loyalty discount for your next stay. We'd love to welcome you back. See you soon and take care!"
-                Turn 2 (if they say NO / not sure): "No worries! Whenever you plan in the future, we have a special 20% discount waiting just for you. Hope to see you soon! Take care."
-                Turn 2 (if negative experience): Apologize sincerely, offer 30% recovery discount, say goodbye warmly.
-                Turn 3+: Thank them and say goodbye. The call should end naturally after the discount offer.
+        identity = {
+            "hotel": f"You are {BRAND_LUMINARE_AI} calling from Luminare Hotels.",
+            "election": f"You are {BRAND_LUMINARE_AI} calling on behalf of Luminare Party.",
+            "feedback": f"You are {BRAND_LUMINARE_AI} calling from Luminare Hospitals for quick feedback.",
+        }.get(mode, f"You are {BRAND_LUMINARE_AI}.")
 
-              IMPORTANT: Once you have offered the discount and said goodbye, do NOT continue the conversation. End warmly.  
-              """
+        return "\n".join(
+            [
+                identity,
+                "Speak like a real human on a phone call.",
+                "Be short, clear, and friendly (1–2 short sentences).",
+                "Avoid repetition and scripted phrasing.",
+                "Output only what you would say aloud (no tags, no hidden reasoning).",
+            ]
+        )
 
-        elif mode == "election":
-            return """You are """ + BRAND_LUMINARE_AI + """ representing Luminare Party — Samvaad-style: natural, respectful voter outreach (not a script).
-""" + voice + """
-              CONVERSATION FLOW (follow this structure):
-                Turn 1: Acknowledge their concerns, then ask "Are you planning to vote for us in the upcoming election?"
-                Turn 2 (if they say YES): "That's wonderful! We truly appreciate your support. Together, we can make a difference and create a better future. Thank you for standing with us!"
-                Turn 2 (if they say NO / not sure): "I understand. If you have any questions about our policies or want to know more about our vision for the future, I'm here to chat. Your voice matters, and we'd love to earn your support!"
-                Turn 2 (if negative experience with party): Apologize sincerely, address their concerns, and say goodbye warmly.
-                Turn 3+: Thank them and say goodbye. The call should end naturally after addressing their concerns.
-                IMPORTANT: Once you have addressed their concerns and said goodbye, do NOT continue the conversation. End warmly."""
+    # ==================== CONTEXT ENGINE ====================
+    def get_context_opening_message(self, context_type: Optional[str], context_data: Optional[Dict], language: str = "en") -> str:
+        """
+        Purpose-driven first line for the call, based on a real-world scenario.
+        Falls back to a simple greeting if context_type is missing or unknown.
+        """
+        ct = (context_type or "").strip().lower()
+        data = context_data or {}
+        lang = (language or "en").lower()
 
-        elif mode == "feedback":
-            return """You are """ + BRAND_LUMINARE_AI + """ for Luminare Hospitals — Samvaad-style patient feedback: warm, unhurried, one question at a time.
-""" + voice + """
-              CONVERSATION FLOW (follow this structure):
-                Turn 1: Greet as Luminare AI, then ask how their visit or care experience was (one short question).
-                Turn 2 (if they sound positive): Warmth first, then one short invite for detail if they want — avoid long "we appreciate your feedback" blocks.
-                Turn 2 (if they sound negative or mixed): Brief sorry that matches what they said; invite one concrete detail; sound like a person, not a form letter.
-                Turn 3+: Short thanks and a clean goodbye — no new questions unless they raised something unclear.
-                IMPORTANT: After you've thanked them and said goodbye, stop — do not repeat the same closing if they only grunt "okay" or "mm-hmm"."""
+        if ct == "report_ready":
+            report_name = (data.get("report_name") or "your report").strip()
+            msg = f"Hi, I'm calling from Luminare Hospital — your {report_name} reports are ready. When would you like to collect them?"
+            return msg if lang == "en" else f"नमस्ते, मैं Luminare Hospital से बोल रहा/रही हूँ — आपके {report_name} की रिपोर्ट तैयार है। आप कब लेना चाहेंगे?"
 
-        return "You are a helpful AI assistant."
+        if ct == "follow_up_reminder":
+            msg = "Hi, the doctor recommended a follow‑up visit — have you scheduled it yet?"
+            return msg if lang == "en" else "नमस्ते, डॉक्टर ने फॉलो‑अप विज़िट की सलाह दी थी — क्या आपने अपॉइंटमेंट ले लिया है?"
+
+        if ct == "appointment_reminder":
+            msg = "Hi, quick reminder about your appointment — are you still able to make it?"
+            return msg if lang == "en" else "नमस्ते, आपकी अपॉइंटमेंट की एक छोटी याद दिलाना था — क्या आप आ पाएँगे?"
+
+        if ct == "billing_pending":
+            amount = data.get("amount")
+            bill_ref = data.get("bill_ref") or data.get("invoice_id")
+            if amount and bill_ref:
+                msg = f"Hi, I'm calling from Luminare Hospital — there’s a pending bill of {amount} for {bill_ref}. Would you like me to share the payment link?"
+            elif amount:
+                msg = f"Hi, I'm calling from Luminare Hospital — there’s a pending bill of {amount}. Would you like me to share the payment link?"
+            else:
+                msg = "Hi, I'm calling from Luminare Hospital — there’s a pending bill. Would you like me to share the payment link?"
+            return msg if lang == "en" else "नमस्ते, मैं Luminare Hospital से बोल रहा/रही हूँ — एक बिल पेंडिंग है। क्या मैं पेमेंट लिंक भेज दूँ?"
+
+        if ct == "repeat_visit_trigger":
+            msg = "Hi, it’s been a while since your last stay — are you planning a trip anytime soon?"
+            return msg if lang == "en" else "नमस्ते, आपकी पिछली स्टे को काफ़ी समय हो गया — क्या आप जल्द कहीं ट्रिप प्लान कर रहे हैं?"
+
+        if ct == "seasonal_offer":
+            season = (data.get("season") or "this season").strip()
+            msg = f"Hi — we have a limited offer for {season}. Would you like the details?"
+            return msg if lang == "en" else f"नमस्ते — {season} के लिए एक लिमिटेड ऑफ़र है। क्या आप डिटेल्स चाहेंगे?"
+
+        if ct == "loyalty_offer":
+            msg = "Hi — as a loyal guest, you have a special offer available. Want the details?"
+            return msg if lang == "en" else "नमस्ते — हमारे लॉयल गेस्ट के लिए एक खास ऑफ़र है। क्या मैं डिटेल्स बता दूँ?"
+
+        if ct == "abandoned_booking":
+            msg = "Hi — you started a booking recently but didn’t complete it. Want me to help you finish it?"
+            return msg if lang == "en" else "नमस्ते — आपने हाल ही में बुकिंग शुरू की थी, लेकिन पूरी नहीं हुई। क्या मैं आपको पूरा करने में मदद कर दूँ?"
+
+        if ct == "local_issue":
+            issue = (data.get("issue") or "a local issue").strip()
+            msg = f"Hi — I’m calling about {issue} in your area. Can I share a quick update?"
+            return msg if lang == "en" else f"नमस्ते — आपके इलाके के {issue} के बारे में कॉल कर रहा/रही हूँ। क्या मैं एक छोटा अपडेट साझा करूँ?"
+
+        if ct == "scheme_awareness":
+            scheme = (data.get("scheme") or "a government scheme").strip()
+            msg = f"Hi — quick call to share details about {scheme}. Would you like to hear it?"
+            return msg if lang == "en" else f"नमस्ते — {scheme} के बारे में जानकारी साझा करने के लिए कॉल है। क्या आप सुनना चाहेंगे?"
+
+        if ct == "event_invite":
+            event = (data.get("event_name") or "an event").strip()
+            when = (data.get("when") or "this weekend").strip()
+            msg = f"Hi — there’s {event} happening in your area {when}. Would you like details?"
+            return msg if lang == "en" else f"नमस्ते — आपके इलाके में {when} {event} हो रहा है। क्या आप डिटेल्स चाहेंगे?"
+
+        if ct == "voter_followup":
+            msg = "Hi — quick follow‑up from our side. Do you have a minute to talk?"
+            return msg if lang == "en" else "नमस्ते — हमारी तरफ़ से एक छोटा फॉलो‑अप था। क्या आपके पास एक मिनट है?"
+
+        # Fallback
+        return (
+            f"Hi — this is {BRAND_LUMINARE_AI}. Is this a good time to talk?"
+            if lang == "en"
+            else f"नमस्ते — मैं {BRAND_LUMINARE_AI} हूँ। क्या अभी बात करने का समय है?"
+        )
+
+    def get_context_prompt(self, context_type: Optional[str], context_data: Optional[Dict]) -> Tuple[str, str]:
+        """
+        Returns (context_label, purpose) for system prompt injection.
+        Keeps the conversation focused and actionable.
+        """
+        ct = (context_type or "").strip().lower()
+        data = context_data or {}
+
+        mapping = {
+            # Hospital
+            "report_ready": ("report_ready", f"Inform the user their {(data.get('report_name') or 'report').strip()} is ready and help them decide pickup/delivery timing."),
+            "follow_up_reminder": ("follow_up_reminder", "Remind the user about a doctor-recommended follow-up and help schedule/confirm next steps."),
+            "appointment_reminder": ("appointment_reminder", "Confirm an upcoming appointment and handle rescheduling if needed."),
+            "billing_pending": ("billing_pending", "Resolve a pending bill by offering a payment link or clarifying billing details."),
+            # Hotel
+            "repeat_visit_trigger": ("repeat_visit_trigger", "Re-engage the guest about planning a trip and help with dates/booking next step."),
+            "seasonal_offer": ("seasonal_offer", "Share a relevant seasonal offer and help the user decide if they want details/booking."),
+            "loyalty_offer": ("loyalty_offer", "Offer a loyalty benefit and move toward an actionable next step (dates/booking)."),
+            "abandoned_booking": ("abandoned_booking", "Help the user complete a booking they started and resolve friction (dates/room/payment)."),
+            # Campaign
+            "local_issue": ("local_issue", "Share a concise update about the local issue and answer questions without drifting topics."),
+            "scheme_awareness": ("scheme_awareness", "Explain the scheme clearly and check eligibility/next steps if the user is interested."),
+            "event_invite": ("event_invite", "Invite the user to the event and share only essential details (what/when/where/how to join)."),
+            "voter_followup": ("voter_followup", "Follow up respectfully and address questions/concerns briefly, then close politely."),
+        }
+
+        if ct in mapping:
+            return mapping[ct]
+        return ("none", "Have a simple, helpful phone conversation and respond to what the user says.")
+
+    def handle_identity_check(self, context: Dict, last_user_text: str) -> str:
+        """
+        Identity confirmation gate for EVERY conversation.
+        Does not allow the call to proceed until identity is confirmed.
+        """
+        customer_id = (context.get("customer_id") or "").strip()
+        is_web_user = customer_id.startswith("web")
+        # Per requirement: if web_user, always use "Ramesh ji" in the identity question.
+        customer_name = "Ramesh" if is_web_user else (context.get("customer_name") or "aap")
+        customer_name = str(customer_name).strip() or "aap"
+        lang = (context.get("language") or "en").lower()
+        ct = context.get("context_type")
+        cd = context.get("context_data") or {}
+
+        def ask_identity() -> str:
+            # Always lead with the requested Hinglish identity intro.
+            # Keep it short and natural for voice.
+            if lang == "hi":
+                return f"Me Priya baat kr rhi hu Luminare AI se. Kya meri {customer_name} ji se baat ho rhi h?"
+            return f"I'm Priya from Luminare AI. Am I speaking with {customer_name}?"
+
+        t = (last_user_text or "").strip().lower()
+        if not t:
+            return ask_identity()
+
+        # Clear confirmations (Hinglish/Hindi + English)
+        confirm_markers = (
+            "yes", "yep", "yeah", "haan", "han", "ha", "ji", "ji haan",
+            "speaking", "bol raha", "bol rahi", "main", "mein", "this is", "i am",
+        )
+        deny_markers = (
+            "no", "nah", "wrong", "wrong person", "galat", "galat number",
+            "not me", "nahi", "nahi ji",
+        )
+        unclear_markers = ("kaun", "kaun?", "kya", "kya?", "who", "what", "sorry?")
+
+        if any(m in t for m in deny_markers):
+            context["conversation_done"] = True
+            context["state"] = "closing"
+            return "Sorry, shayad galat number hai. Dhanyavaad!"
+
+        if any(m in t for m in unclear_markers):
+            context["state"] = "identity_check"
+            return ask_identity()
+
+        if any(m in t for m in confirm_markers):
+            context["state"] = "active_conversation"
+            # Move immediately into the context-driven purpose (keep it short).
+            opening = self.get_context_opening_message(ct, cd, language=lang)
+            if lang == "hi":
+                return self._ensure_complete_spoken_response(f"Ji haan. {opening}", lang)
+            return self._ensure_complete_spoken_response(f"Yes. {opening}", lang)
+
+        # Unclear: re-ask without progressing.
+        context["state"] = "identity_check"
+        return ask_identity()
       
     # ==================== LANGUAGE DETECTION (Script-based) ====================
     
@@ -221,7 +458,15 @@ VOICE (Samvaad-style — you are """ + BRAND_LUMINARE_AI + """, a natural voice 
     
     # ==================== CONVERSATION HISTORY MANAGEMENT ====================
     
-    def init_conversation(self, call_sid: str, customer_id: str, language: str = "en", mode: str = "hotel") -> Optional[Dict]:
+    def init_conversation(
+        self,
+        call_sid: str,
+        customer_id: str,
+        language: str = "en",
+        context_type: Optional[str] = None,
+        context_data: Optional[Dict] = None,
+        mode: str = "hotel",
+    ) -> Optional[Dict]:
         """
         Initialize conversation history for a new call
         
@@ -261,18 +506,21 @@ Customer Profile:
 - Preferred Room: {customer.preferred_room_type or 'Not specified'}
 """
             system_prompt = self.get_system_prompt(mode)
+            ctx_label, ctx_purpose = self.get_context_prompt(context_type, context_data)
             system_message = f"""
 {system_prompt}
 
 Customer Details: {customer_context}
 
+Conversation context: {ctx_label}
+Purpose of call: {ctx_purpose}
+
 Rules:
 - Respond in {language} only.
-- Keep response to 1-2 short sentences max (voice-friendly for TTS).
-- Follow the conversation flow strictly.
-- Read the user's last message and respond directly to it — sound like a real person, not a template.
-- No thinking tags or internal reasoning — only speakable text.
-- You are {BRAND_LUMINARE_AI} (Sarvam voice); sound helpful and conversational, not sales-heavy.
+- Sound like a real person on a live call (not robotic, not scripted).
+- Keep replies short and voice-friendly (usually 1–2 short sentences).
+- Avoid repeating yourself.
+- Focus only on the conversation context above. If the user drifts, gently bring them back to the purpose.
 """
             
             context = {
@@ -280,7 +528,14 @@ Rules:
                 "customer_id": customer_id,
                 "customer_name": customer.name,
                 "language": language,
+                # Legacy field kept for compatibility; do not drive flow from mode.
                 "mode": mode,
+                "context_type": context_type,
+                "context_data": context_data or {},
+                "state": "identity_check",
+                "intent": "neutral",
+                "pending_language": None,
+                "pending_language_count": 0,
                 "messages": [
                     {"role": "system", "content": system_message}
                 ],
@@ -362,9 +617,24 @@ Rules:
             if not is_silence:
                 detected_lang = self.detect_language_from_script(user_text)
 
+                # Disable aggressive auto-switch: require two consecutive "votes" to change language.
                 if self._should_switch_language(context["language"], detected_lang, user_text):
-                    logger.info(f"🌍 Language detected: {context['language']} → {detected_lang}")
-                    context["language"] = detected_lang
+                    pending = context.get("pending_language")
+                    if pending == detected_lang:
+                        context["pending_language_count"] = int(context.get("pending_language_count") or 0) + 1
+                    else:
+                        context["pending_language"] = detected_lang
+                        context["pending_language_count"] = 1
+
+                    if context["pending_language_count"] >= 2:
+                        old = context["language"]
+                        context["language"] = detected_lang
+                        context["pending_language"] = None
+                        context["pending_language_count"] = 0
+                        logger.info(f"🌍 Language switched (confirmed): {old} → {detected_lang}")
+                else:
+                    context["pending_language"] = None
+                    context["pending_language_count"] = 0
             
             # Skip sentiment analysis to reduce API calls
             # sentiment_result = self.sarvam.analyze_sentiment(user_text, context["language"])
@@ -500,11 +770,28 @@ CODE ONLY:"""
             
             logger.info(f"✓ STT: '{text}' (confidence: {confidence:.2%})")
             
-            # Update language if detected
-            if detected_lang and detected_lang != language and len(text) > 3:
-                old_lang = context["language"]
-                context["language"] = detected_lang
-                logger.info(f"   Language updated: {old_lang} → {detected_lang}")
+            # Update language only with strong evidence (avoid mid-call flips on noise).
+            if (
+                detected_lang
+                and detected_lang != language
+                and confidence >= 0.75
+                and len((text or "").strip()) >= 16
+                and not self._is_filler_utterance(text)
+                and self._should_switch_language(language, detected_lang, text)
+            ):
+                pending = context.get("pending_language")
+                if pending == detected_lang:
+                    context["pending_language_count"] = int(context.get("pending_language_count") or 0) + 1
+                else:
+                    context["pending_language"] = detected_lang
+                    context["pending_language_count"] = 1
+
+                if context["pending_language_count"] >= 2:
+                    old_lang = context["language"]
+                    context["language"] = detected_lang
+                    context["pending_language"] = None
+                    context["pending_language_count"] = 0
+                    logger.info(f"   Language updated (confirmed): {old_lang} → {detected_lang}")
             
             return text
         
@@ -514,7 +801,14 @@ CODE ONLY:"""
     
     # ==================== LLM (Text Generation via Sarvam LLM) ====================
     
-    def generate_next_response(self, call_sid: str) -> Optional[str]:
+    def generate_next_response(
+        self,
+        call_sid: str,
+        prefer_gemini: bool = False,
+        max_tokens: int = LLM_VOICE_MAX_TOKENS,
+        temperature: float = LLM_VOICE_TEMPERATURE,
+        history_limit: int = 8,
+    ) -> Optional[str]:
         """
         Generate next response using Sarvam LLM based on conversation history
         
@@ -539,224 +833,173 @@ CODE ONLY:"""
             if context.get("conversation_done"):
                 return None
 
-            # Get last user message for trigger detection
-            last_user_msg = ""
-            for msg in reversed(context["messages"]):
-                if msg["role"] == "user":
-                    last_user_msg = msg["content"].lower()
-                    break
-            mode = context.get("mode", "hotel")
-            language = context["language"]
+            def _get_last_user_text() -> str:
+                for m in reversed(context.get("messages") or []):
+                    if isinstance(m, dict) and m.get("role") == "user":
+                        return (m.get("content") or "").strip()
+                return ""
 
-            # Feedback: vague filler late in the call — short closing, no duplicate LLM block (faster + human)
-            if mode == "feedback" and context["turn_count"] >= 3 and self._is_filler_utterance(last_user_msg):
-                context["conversation_done"] = True
-                n = context["turn_count"]
-                if language == "hi":
-                    outs = [
-                        "ठीक है — समय देने के लिए धन्यवाद। अपना ख्याल रखिए!",
-                        "धन्यवाद — यह हमारे लिए मायने रखता है। जल्दी फिर बात करेंगे!",
-                    ]
+            def _detect_intent(text: str) -> str:
+                t = (text or "").strip().lower()
+                if not t:
+                    return "neutral"
+                if any(p in t for p in ("not interested", "don't call", "dont call", "stop calling", "no thanks", "no thank you")):
+                    return "not_interested"
+                if any(p in t for p in ("busy", "in a meeting", "call later", "later", "not now", "can't talk", "cant talk")):
+                    return "busy"
+                if any(p in t for p in ("what", "which", "who", "why", "meaning", "don't understand", "dont understand", "confused", "sorry?", "huh")):
+                    return "confused"
+                if any(p in t for p in ("complain", "complaint", "problem", "issue", "bad", "worst", "disappointed", "rude", "dirty", "refund")):
+                    return "complaint"
+                if any(p in t for p in ("yes", "yeah", "yep", "sure", "interested", "tell me", "sounds good", "book", "booking", "visit", "stay", "discount", "offer", "price", "rate")):
+                    return "interest"
+                return "neutral"
+
+            def _advance_state(prev: str, intent: str, last_user: str) -> str:
+                s = (prev or "intro").strip().lower()
+                if s == "intro" and (last_user or "").strip():
+                    return "explore"
+                if s in ("intro", "explore") and intent == "interest":
+                    return "offer"
+                if s == "offer":
+                    return "closing"
+                return s
+
+            def _select_history(window: int = 8) -> List[Dict]:
+                window = int(window or 8)
+                window = max(6, min(10, window))
+                tail = list(context.get("messages") or [])[1:]  # exclude system
+                if not tail:
+                    return []
+
+                # Always include last user message.
+                last_user_idx = None
+                for i in range(len(tail) - 1, -1, -1):
+                    if isinstance(tail[i], dict) and tail[i].get("role") == "user":
+                        last_user_idx = i
+                        break
+
+                if last_user_idx is None:
+                    selected = tail[-window:]
                 else:
-                    outs = [
-                        "Alright — thanks for taking the time. Wishing you a good day!",
-                        "Thanks — that really helps us. Take care!",
-                        "Appreciate you sharing that. Have a good one!",
-                    ]
-                pick = outs[n % len(outs)]
-                return self._ensure_complete_spoken_response(pick, language)
+                    start = max(0, last_user_idx - (window - 1))
+                    selected = tail[start:last_user_idx + 1]
 
-            # ============ SMART TRIGGER DETECTION ============
-            if mode == "hotel":
+                # Provider constraint: first non-system message should be from user.
+                while selected and isinstance(selected[0], dict) and selected[0].get("role") != "user":
+                    selected = selected[1:]
+                return selected
 
-                end_keywords = [
-                    "bye", "goodbye", "see you", "talk later", "not interested",
-                    "busy", "don't call again", "okay bye", "ok bye", "bye bye",
-                ]
-                if any(word in last_user_msg for word in end_keywords):
-                    context["conversation_done"] = True
-                    return {
-                        "en": "Thank you so much for your time. Take care, and we hope to see you again soon!",
-                        "hi": "आपके समय के लिए बहुत धन्यवाद! अपना ख्याल रखें, जल्द ही फिर मिलेंगे!",
-                        "ta": "உங்கள் நேரத்திற்கு மிக்க நன்றி! பார்த்துக் கொள்ளுங்கள், விரைவில் மீண்டும் சந்திப்போம்!",
-                        "te": "మీ సమయానికి చాలా ధన్యవాదాలు! జాగ్రత్తగా ఉండండి, త్వరలో మళ్లీ కలుద్దాం!",
-                        "ml": "നിങ്ങളുടെ സമയത്തിന് വളരെ നന്ദി! ശ്രദ്ധിക്കുക, വീണ്ടും കാണാം!",
-                    }.get(language, "Thank you so much for your time. Take care, and we hope to see you again soon!")
-                no_visit_keywords = ["not planning", "maybe later", "not soon"]
-                if any(phrase in last_user_msg for phrase in no_visit_keywords):
-                    return {
-                        "en": "No worries! Whenever you plan in the future, we have a special 20% discount waiting just for you. Hope to see you soon! Take care.",
-                        "hi": "कोई बात नहीं! जब भी आप भविष्य में योजना बनाएं, हमारे पास आपके लिए एक विशेष 20% छूट तैयार है। आशा है कि जल्द ही मिलेंगे! ध्यान रखना।"
-                    }.get(language, "No worries! Whenever you plan in the future, we have a special 20% discount waiting just for you. Hope to see you soon! Take care.")
-                complaint_keywords = ["not happy", "bad experience", "complain", "issue", "problem", "disappointed"]
-                if any(word in last_user_msg for word in complaint_keywords):
-                    return {
-                        "en": "I'm really sorry to hear that. We strive to provide the best experience, and your feedback is valuable to us. Please accept a 30% discount on your next stay as a token of our apology. We hope to have the chance to make it up to you in the future.",
-                        "hi": "यह सुनकर मुझे बहुत खेद है। हम सर्वोत्तम अनुभव प्रदान करने का प्रयास करते हैं, और आपकी प्रतिक्रिया हमारे लिए मूल्यवान है। कृपया हमारी माफी के प्रतीक के रूप में अपनी अगली यात्रा पर 30% छूट स्वीकार करें। हमें उम्मीद है कि भविष्य में इसे सुधारने का मौका मिलेगा।"
-                    }.get(language, "I'm really sorry to hear that. We strive to provide the best experience, and your feedback is valuable to us. Please accept a 30% discount on your next stay as a token of our apology. We hope to have the chance to make it up to you in the future.")
+            last_user_text = _get_last_user_text()
+            last_user_lc = (last_user_text or "").lower()
+            lang = (context.get("language") or "en").lower()
+            context_type = context.get("context_type")
+            context_data = context.get("context_data") or {}
+            ctx_label, ctx_purpose = self.get_context_prompt(context_type, context_data)
 
-                # First assistant reply: strict Turn 1 + Luminare AI (matches Sarvaad-style intro)
-                if context["turn_count"] == 0:
-                    first_turn = {
-                        "en": f"Hi — this is {BRAND_LUMINARE_AI} with Luminare Hotels. How are you today, and are you thinking of visiting us again soon?",
-                        "hi": f"नमस्ते — मैं {BRAND_LUMINARE_AI} से Luminare Hotels की ओर से बोल रहा हूँ। आप आज कैसे हैं, और क्या आप जल्द फिर से आने की सोच रहे हैं?",
-                        "ta": f"வணக்கம் — நான் Luminare Hotels-இலிருந்து {BRAND_LUMINARE_AI}. இன்று எப்படி இருக்கிறீர்கள், விரைவில் மீண்டும் வர திட்டமிருக்கிறீர்களா?",
-                        "te": f"నమస్కారం — నేను Luminare Hotels తరఫున {BRAND_LUMINARE_AI}. ఈరోజు ఎలా ఉన్నారు, త్వరలో మళ్లీ రావాలని అనుకుంటున్నారా?",
-                        "ml": f"നമസ്കാരം — ഞാൻ Luminare Hotels-ൽ നിന്ന് {BRAND_LUMINARE_AI} ആണ്. ഇന്ന് എങ്ങനെയുണ്ട്, വീണ്ടും വരാൻ പ്ലാൻ ചെയ്യുന്നുണ്ടോ?",
-                    }
-                    return self._ensure_complete_spoken_response(
-                        first_turn.get(language, first_turn["en"]),
-                        language,
-                    )
+            # Identity gate (hard rule): do not proceed until confirmed.
+            if (context.get("state") or "identity_check") == "identity_check":
+                return self._ensure_complete_spoken_response(
+                    self.handle_identity_check(context, last_user_text),
+                    lang,
+                )
 
-            elif mode == "election":
-
-                if context["turn_count"] == 0:
-                    lm = last_user_msg.strip()
-                    decline = (
-                        "not interested", "don't call", "stop", "busy", "not voting",
-                    )
-                    short_refuse = lm in ("no", "nope", "nah", "no.", "nope.")
-                    if not short_refuse and not any(d in last_user_msg for d in decline):
-                        first_turn = {
-                            "en": f"Hi — this is {BRAND_LUMINARE_AI} with Luminare Party. How are you doing, and would you be open to a quick chat about the upcoming election?",
-                            "hi": f"नमस्ते — मैं {BRAND_LUMINARE_AI} हूँ, Luminare Party की ओर से। आप कैसे हैं, और क्या आप चुनाव पर एक छोटी बातचीत के लिए तैयार हैं?",
-                        }
-                        return self._ensure_complete_spoken_response(
-                            first_turn.get(language, first_turn["en"]),
-                            language,
-                        )
-
-                if "no" in last_user_msg or "not" in last_user_msg:
-                    return {
-                        "en": "I understand your concerns. Can I share how our policies will benefit you?",
-                        "hi": "मैं आपकी चिंताओं को समझता हूँ। क्या मैं आपको बता सकता हूँ कि हमारी नीतियाँ आपके लिए कैसे लाभकारी होंगी?"
-                    }.get(language, "I understand your concerns. Can I share how our policies will benefit you?")   
-                elif "yes" in last_user_msg or "vote" in last_user_msg:
-                    return {
-                        "en": "That's wonderful! We truly appreciate your support. Together, we can make a difference and create a better future. Thank you for standing with us!",
-                        "hi": "यह शानदार है! हम आपके समर्थन की वास्तव में सराहना करते हैं। साथ मिलकर, हम एक फर्क कर सकते हैं और एक बेहतर भविष्य बना सकते हैं। हमारे साथ खड़े होने के लिए धन्यवाद!"
-                    }.get(language, "That's wonderful! We truly appreciate your support. Together, we can make a difference and create a better future. Thank you for standing with us!")
-
-            elif mode == "feedback":
-                if any(
-                    w in last_user_msg
-                    for w in ("bye", "goodbye", "hang up", "got to go", "gotta go")
-                ):
-                    context["conversation_done"] = True
-                    return self._ensure_complete_spoken_response(
-                        "Thanks for your time with us — take care!",
-                        language,
-                    )
-
-                if context["turn_count"] == 0:
-                    first_turn = {
-                        "en": f"Hi — this is {BRAND_LUMINARE_AI} with Luminare Hospitals. Thanks for speaking with us. Overall, how did your visit go?",
-                        "hi": f"नमस्ते — मैं {BRAND_LUMINARE_AI} हूँ, Luminare Hospitals की ओर से। समय देने के लिए धन्यवाद — आपकी यात्रा कैसी रही?",
-                    }
-                    return self._ensure_complete_spoken_response(
-                        first_turn.get(language, first_turn["en"]),
-                        language,
-                    )
-
-                if "good" in last_user_msg or "great" in last_user_msg or "excellent" in last_user_msg:
-                    return {
-                        "en": "That's really good to hear — thanks for telling me. If anything stood out, I'd love to hear it.",
-                        "hi": "यह सुनकर अच्छा लगा — बताने के लिए धन्यवाद। अगर कुछ खास लगा हो तो बता सकते हैं।"
-                    }.get(language, "That's really good to hear — thanks for telling me. If anything stood out, I'd love to hear it.")
-                elif "bad" in last_user_msg or "not good" in last_user_msg or "poor" in last_user_msg:
-                    return {
-                        "en": "I'm sorry it wasn't great — I hear you. What bothered you most, if you're okay sharing?",
-                        "hi": "यह सुनकर अफ़सोस हुआ — मैं समझ रहा हूँ। अगर आप बता सकें तो सबसे ज़्यादा क्या खराब लगा?"
-                    }.get(language, "I'm sorry it wasn't great — I hear you. What bothered you most, if you're okay sharing?")
-                
-            # ============ NORMAL CONVERSATION (LLM-DRIVEN) ============
-            
-            # Check turn limit (safety cutoff)
-            if context["turn_count"] >= 8:
-                logger.info(f"⏹️ Max turns reached ({context['turn_count']}), gracefully ending call")
-                context["conversation_done"] = True
-                lang = context["language"]
-                closing = {
-                    "en": "Thank you so much for chatting with us today! We hope to see you again soon. Take care!",
-                    "hi": "आपसे बात करने के लिए बहुत-बहुत धन्यवाद! जल्दी मिलेंगे। अलविदा!",
-                }
-                return closing.get(lang, closing["en"])
-
-            logger.debug(f"🟢 NORMAL FLOW (turn {context['turn_count']}): '{last_user_msg[:50]}'")
-            
-            # Build messages with system prompt + language instruction
-            lang = context["language"]
-            lang_names = {"en": "English", "hi": "Hindi", "ta": "Tamil", "te": "Telugu", "ml": "Malayalam"}
-            lang_instruction = (
-                f"\nRespond in {lang_names.get(lang, 'English')} only. "
-                "1–2 short sentences max, as natural spoken dialogue (not marketing copy)."
+            # End-call / not-interested detection (hard rule).
+            end_keywords = (
+                "bye", "goodbye", "hang up", "don't call again", "dont call again",
+                "not interested", "stop calling", "stop",
             )
-            
-            system_with_lang = context["messages"][0]["content"].replace(
-                f"- Respond in {context['language']} only.",
-                f"- Respond in {lang_names.get(lang, 'English')} only."
-            ) + lang_instruction
-            
-            messages = [{"role": "system", "content": system_with_lang}] + context["messages"][1:]
-            
-            acknowledgments = [
-                "சரி சார்", "சரி", "okay", "ok", "haan", "ha", "accha",
-                "theek hai", "sari", "yes", "yep", "sure", "alright", "fine"
-            ]
-            if any(ack in last_user_msg.lower() for ack in acknowledgments):
-                turn = context["turn_count"]
-                if turn >= 2:
-                    context["conversation_done"] = True
-                    closing = {
-                        "en": "Thank you so much for your time! Have a wonderful day.",
-                        "hi": "आपके समय के लिए बहुत धन्यवाद! आपका दिन शुभ हो।",
-                        "ta": "உங்கள் நேரத்திற்கு மிக்க நன்றி! அருமையான நாள்!",
-                        "te": "మీ సమయానికి చాలా ధన్యవాదాలు! మీకు శుభమైన రోజు.",
-                        "ml": "നിങ്ങളുടെ സമയത്തിന് വളരെ നന്ദി! ഒരു മനോഹരമായ ദിവസം."
-                    }
-                    return closing.get(lang, closing["en"])
-            
-            try:
-                logger.debug(f"Calling LLM (turn {context['turn_count']}, lang={lang}, msgs={len(messages)})...")
-                logger.debug(f"System prompt length: {len(system_with_lang)}")
-                logger.debug(f"Last 3 messages: {messages[-3:] if len(messages) >= 3 else messages}")
-                
-                # Call LLM — tight max_tokens keeps latency low for voice turns
+            if any(k in last_user_lc for k in end_keywords):
+                context["conversation_done"] = True
+                context["state"] = "closing"
+                closing = {
+                    "en": "Got it — thanks for your time. Take care!",
+                    "hi": "ठीक है — आपके समय के लिए धन्यवाद। अपना ख्याल रखिए!",
+                    "ta": "சரி — உங்கள் நேரத்திற்கு நன்றி. பார்த்துக்கொள்ளுங்கள்!",
+                    "te": "సరే — మీ సమయానికి ధన్యవాదాలు. జాగ్రత్తగా ఉండండి!",
+                    "ml": "ശരി — നിങ്ങളുടെ സമയത്തിന് നന്ദി. ശ്രദ്ധിക്കുക!",
+                }
+                return self._ensure_complete_spoken_response(closing.get(lang, closing["en"]), lang)
+
+            # Filler-only responses: short acknowledgement, no LLM call.
+            if self._is_filler_utterance(last_user_text):
+                acks = {
+                    "en": ["Got it — makes sense.", "Okay — understood.", "Alright — got it."],
+                    "hi": ["ठीक है — समझ गया।", "अच्छा — ठीक है।", "समझ गया — ठीक है।"],
+                }
+                choices = acks.get(lang, acks["en"])
+                pick = choices[int(context.get("turn_count") or 0) % len(choices)]
+                context["intent"] = "neutral"
+                context["state"] = _advance_state(context.get("state") or "intro", "neutral", last_user_text)
+                return self._ensure_complete_spoken_response(pick, lang)
+
+            # Safety cutoff (not a scripted flow): avoid runaway calls.
+            if int(context.get("turn_count") or 0) >= 12:
+                context["conversation_done"] = True
+                context["state"] = "closing"
+                closing = {
+                    "en": "Thanks for your time — take care!",
+                    "hi": "आपके समय के लिए धन्यवाद — अपना ख्याल रखिए!",
+                }
+                return self._ensure_complete_spoken_response(closing.get(lang, closing["en"]), lang)
+
+            intent = _detect_intent(last_user_text)
+            context["intent"] = intent
+            # Post-identity: we keep the main state simple (active_conversation/closing).
+            if (context.get("state") or "").lower() not in ("active_conversation", "closing"):
+                context["state"] = "active_conversation"
+
+            # Context-driven intent handling (fast, no LLM call).
+            if intent == "busy":
+                busy_msg = {
+                    "en": "No problem — when should I call back?",
+                    "hi": "कोई बात नहीं — मैं कब वापस कॉल करूँ?",
+                }
+                return self._ensure_complete_spoken_response(busy_msg.get(lang, busy_msg["en"]), lang)
+
+            if intent == "confused":
+                explain = {
+                    "en": f"Quick context — this call is about {ctx_purpose} Would you like me to repeat that slowly?",
+                    "hi": "एक छोटा सा संदर्भ — यह कॉल इसी वजह से है। क्या मैं धीरे से दोहरा दूँ?",
+                }
+                return self._ensure_complete_spoken_response(explain.get(lang, explain["en"]), lang)
+
+            lang_names = {"en": "English", "hi": "Hindi", "ta": "Tamil", "te": "Telugu", "ml": "Malayalam"}
+            system_with_context = "\n".join(
+                [
+                    context["messages"][0]["content"],
+                    f"Conversation context: {ctx_label}",
+                    f"Purpose of call: {ctx_purpose}",
+                    f"Current conversation stage: {context.get('state', 'active_conversation')}",
+                    f"User intent: {intent}",
+                    f"Respond in {lang_names.get(lang, 'English')} only.",
+                    "Be natural, short, and voice-friendly (1–2 short sentences).",
+                    "Stay on the context topic; if the user changes topics, acknowledge briefly and steer back to the purpose.",
+                ]
+            )
+
+            messages = [{"role": "system", "content": system_with_context}] + _select_history(history_limit or 8)
+
+            # Performance: cap output tokens for real-time voice.
+            max_tokens = int(max_tokens or 140)
+            max_tokens = max(60, min(150, max_tokens))
+
+            agent_text = None
+            if prefer_gemini:
+                agent_text = self._call_gemini_llm(messages=messages, max_tokens=max_tokens, temperature=temperature)
+            if not agent_text:
                 agent_text = self.sarvam.call_llm_safe(
                     messages=messages,
                     model="sarvam",
-                    max_tokens=LLM_VOICE_MAX_TOKENS,
-                    temperature=LLM_VOICE_TEMPERATURE,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
                 )
-                
-                if not agent_text:
-                    logger.error(f"LLM returned None")
-                    return None
-                
-                if len(agent_text.strip()) == 0:
-                    logger.error(f"LLM returned empty text")
-                    return None
-                
-                # 🧠 Strip thinking tags if present (some LLMs return reasoning)
-                # e.g., <think>reasoning...</think>actual response
-                agent_text = re.sub(r'<think>.*?</think>\s*', '', agent_text, flags=re.DOTALL).strip()
-
-                # Ensure response is complete and speakable before TTS playback.
-                agent_text = self._ensure_complete_spoken_response(agent_text, lang)
-                
-                if len(agent_text) < 3:
-                    logger.warning(f"LLM returned very short response after filtering: '{agent_text}'")
-                    return None
-                
-                logger.info(f"✓ LLM response (turn {context['turn_count']}, lang={lang}): {agent_text[:80]}...")
-                return agent_text
-            
-            except Exception as llm_err:
-                logger.error(f"LLM API error: {type(llm_err).__name__}: {str(llm_err)}")
-                import traceback
-                logger.error(f"Traceback: {traceback.format_exc()}")
+            if not agent_text or not str(agent_text).strip():
                 return None
+
+            agent_text = re.sub(r"<think>.*?</think>\s*", "", str(agent_text), flags=re.DOTALL).strip()
+            agent_text = self._ensure_complete_spoken_response(agent_text, lang)
+            return agent_text
         
         except Exception as e:
             logger.error(f"Error in generate_next_response: {str(e)}")
@@ -794,7 +1037,14 @@ CODE ONLY:"""
 
             # URL encode the text
             encoded_text = urllib.parse.quote(agent_text.strip())
-            audio_url = f"/api/v1/audio/generate?text={encoded_text}&language={tts_language}"
+            # Force female voice for ALL responses (Sarvam TTS).
+            voice_gender = "female"
+            voice_id = os.getenv("SARVAM_TTS_VOICE_ID_FEMALE", "").strip()
+            voice_q = f"&voice_gender={urllib.parse.quote(voice_gender)}"
+            if voice_id:
+                voice_q += f"&voice_id={urllib.parse.quote(voice_id)}"
+
+            audio_url = f"/api/v1/audio/generate?text={encoded_text}&language={tts_language}{voice_q}"
             
             logger.info(f"✓ TTS URL generated: {tts_language} ({len(agent_text)} chars)")
             return audio_url

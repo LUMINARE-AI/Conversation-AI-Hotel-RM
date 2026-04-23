@@ -52,6 +52,14 @@ const MODES = [
   },
 ];
 
+// Temporary compatibility: map old UI "modes" to new backend context types.
+// This keeps the UX unchanged while making conversations purpose-driven.
+const MODE_TO_CONTEXT = {
+  hotel: { context_type: "repeat_visit_trigger", context_data: {} },
+  election: { context_type: "event_invite", context_data: {} },
+  feedback: { context_type: "follow_up_reminder", context_data: {} },
+};
+
 // SVG scallop / mughal arch blob — same silhouette as screenshot
 function BlobShape({ gradient, glow, id, children }) {
   const gradId = `grad-${id}`;
@@ -231,9 +239,14 @@ export default function Samvaad() {
 
       ws.binaryType = "arraybuffer"; // 🔥 CRITICAL FIX
 
+      const ctx = MODE_TO_CONTEXT[modeId] || { context_type: null, context_data: {} };
+
       ws.send(JSON.stringify({
         type: "init",
+        // Backward-compatible: backend may still accept "mode".
         mode: modeId,
+        context_type: ctx.context_type,
+        context_data: ctx.context_data,
         sample_rate: audioCtx.sampleRate,
       }));
     };

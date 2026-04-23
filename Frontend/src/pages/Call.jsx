@@ -15,6 +15,7 @@ export default function Call({ addToast }) {
   const [customerId, setCustomerId] = useState("");
   const [language, setLanguage]     = useState("en");
   const [customPrompt, setCustomPrompt] = useState("");
+  const [contextType, setContextType] = useState("");
   const [loading, setLoading]       = useState(false);
   const [result, setResult]         = useState(null);
 
@@ -27,7 +28,13 @@ export default function Call({ addToast }) {
     setLoading(true);
     setResult(null);
     try {
-      const res = await api.triggerCall(customerId, language, customPrompt);
+      const res = await api.triggerCall(
+        customerId,
+        language,
+        customPrompt,
+        contextType || null,
+        {}
+      );
       setResult(res);
       addToast("Call initiated!", "success");
     } catch { addToast("Call failed. Check backend.", "error"); }
@@ -71,6 +78,34 @@ export default function Call({ addToast }) {
                 value={customPrompt}
                 onChange={(e) => setCustomPrompt(e.target.value)}
               />
+            </Field>
+
+            <Field label="Context Type (optional)">
+              <select
+                className={inputCls}
+                value={contextType}
+                onChange={(e) => setContextType(e.target.value)}
+              >
+                <option value="">— Default (no context) —</option>
+                <optgroup label="Hospital">
+                  <option value="report_ready">report_ready</option>
+                  <option value="follow_up_reminder">follow_up_reminder</option>
+                  <option value="appointment_reminder">appointment_reminder</option>
+                  <option value="billing_pending">billing_pending</option>
+                </optgroup>
+                <optgroup label="Hotel">
+                  <option value="repeat_visit_trigger">repeat_visit_trigger</option>
+                  <option value="seasonal_offer">seasonal_offer</option>
+                  <option value="loyalty_offer">loyalty_offer</option>
+                  <option value="abandoned_booking">abandoned_booking</option>
+                </optgroup>
+                <optgroup label="Campaign">
+                  <option value="local_issue">local_issue</option>
+                  <option value="scheme_awareness">scheme_awareness</option>
+                  <option value="event_invite">event_invite</option>
+                  <option value="voter_followup">voter_followup</option>
+                </optgroup>
+              </select>
             </Field>
 
             <PrimaryButton onClick={handleCall} disabled={loading} className="w-full mt-1">
