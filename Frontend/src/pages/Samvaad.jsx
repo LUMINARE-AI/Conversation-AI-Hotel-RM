@@ -389,7 +389,7 @@ export default function Samvaad() {
             Experience Luminare AI Voice-Labs
           </h1>
           <p className="text-slate-400 text-sm font-medium mt-1">
-            Samvaad-style voice — Luminare AI & Sarvam · natural two-way conversation
+            Voice-Labs voice — Luminare AI & Sarvam · natural two-way conversation
           </p>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm">

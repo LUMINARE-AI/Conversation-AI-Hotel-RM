@@ -19,13 +19,13 @@ A **React (Vite) + Tailwind** web dashboard provides login, customer and call wo
 - **REST API**: FastAPI with automatic OpenAPI docs (`/docs`)
 - **Think-Tag Stripping**: Robust handling of LLM reasoning output (sarvam-m emits `<redacted_thinking>` blocks)
 - **Web Dashboard**: JWT authentication, role-based **admin** / **user** access, Voice-Labs API integration
-- **Voice Labs — Samvaad** (in-browser demo, `Frontend/src/pages/Samvaad.jsx`): **two-way voice** in the browser over **`WebSocket`** (`/api/v1/stream/web/ws`) to the same Sarvam pipeline — **AudioWorklet** (`Frontend/public/pcm-processor.js`) streams **PCM16** mic audio as **base64 JSON**; assistant replies as **MPEG** audio; **mic muted during TTS** to reduce echo; **2:00 max session** and **45s idle** auto-end; three scenario cards (**Hotel Concierge**, **Election Campaigns**, **Hospital Feedback**) send `mode`: `hotel` | `election` | `feedback` on session `init`
+- **Voice Labs** (in-browser demo, `Frontend/src/pages/Samvaad.jsx`): **two-way voice** in the browser over **`WebSocket`** (`/api/v1/stream/web/ws`) to the same Sarvam pipeline — **AudioWorklet** (`Frontend/public/pcm-processor.js`) streams **PCM16** mic audio as **base64 JSON**; assistant replies as **MPEG** audio; **mic muted during TTS** to reduce echo; **2:00 max session** and **45s idle** auto-end; three scenario cards (**Hotel Concierge**, **Election Campaigns**, **Hospital Feedback**) send `mode`: `hotel` | `election` | `feedback` on session `init`
 
 ---
 
-## 🎙️ Voice Labs — Samvaad (browser)
+## 🎙️ Voice Labs (browser)
 
-The **Samvaad** page is the **Voice Labs** experience: natural **browser ↔ server** voice chat (no PSTN), backed by **`src/api/web_ws.py`** on **`/api/v1/stream/web/ws`**.
+The **Voice Labs** page is the **Voice Labs** experience: natural **browser ↔ server** voice chat (no PSTN), backed by **`src/api/web_ws.py`** on **`/api/v1/stream/web/ws`**.
 
 | Aspect | Implementation |
 |--------|------------------|
@@ -305,7 +305,7 @@ npm run dev
 
 Opens the Vite dev server (default **http://localhost:5173**); `/api` requests proxy to the backend. **Log in** with the seeded admin (`AUTH_ADMIN_EMAIL` / `AUTH_ADMIN_PASSWORD`) or a user created by an admin.
 
-Open **Samvaad** (Voice Labs) from the nav after login to try **in-browser** two-way voice: allow **microphone** access when prompted.
+Open **Voice Labs** from the nav after login to try **in-browser** two-way voice: allow **microphone** access when prompted.
 
 ### 4. Authenticated API usage
 

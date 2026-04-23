@@ -295,7 +295,7 @@ export default function HomePage({ setPage }) {
                 Open Voice-Labs
               </PrimaryButton>
               <PrimaryButton type="button" variant="secondary" onClick={go("samvaad")}>
-                Try Samvaad
+                Try Voice-Labs
               </PrimaryButton>
             </div>
           </div>
