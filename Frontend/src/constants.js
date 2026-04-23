@@ -5,7 +5,7 @@ export const VOICE_LABS_NAV = [
   { id: "call", label: "Call Trigger", icon: "phone" },
   { id: "reports", label: "Reports", icon: "reports" },
   { id: "upload", label: "Upload", icon: "upload" },
-  { id: "samvaad", label: "Samvaad", icon: "samvaad" },
+  { id: "samvaad", label: "Experience Voice-Labs", icon: "samvaad" },
 ];
 
 export const VOICE_LABS_PAGE_IDS = VOICE_LABS_NAV.map((n) => n.id);
