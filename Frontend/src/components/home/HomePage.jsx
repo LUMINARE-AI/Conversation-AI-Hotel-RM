@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Check } from "lucide-react";
 import { Icon, Card, PrimaryButton } from "../UI";
 import { WEB_PROJECTS } from "../../data/webProjects";
+import voiceLabsPreview from "../../assets/Voice.png";
 import {
   ProjectVideoPreview,
   ProjectModelPreview,
@@ -11,6 +12,24 @@ import {
 } from "../WebProjectsShowcase";
 
 const FEATURED = WEB_PROJECTS.slice(0, 3);
+const FEATURED_WITH_VOICE = [
+  ...FEATURED,
+  {
+    id: "voice-labs",
+    title: "Voice-Labs",
+    typeLabel: "Voice AI Product",
+    tagline: "Calling workflows, dashboards, and real-time agent experiences.",
+    description:
+      "A voice agent stack for outbound & inbound calling — triggers, reports, follow-ups, and conversation tooling designed for real ops.",
+    previewType: "image",
+    imageSrc: voiceLabsPreview,
+    accent: "indigo",
+    gradient: "from-indigo-500/15 via-violet-500/10 to-sky-500/15",
+    ring: "ring-indigo-500/25 hover:ring-indigo-400/45",
+    glow: "shadow-indigo-500/15 hover:shadow-indigo-500/25",
+    cta: { label: "Open Voice‑Labs", pageId: "samvaad" },
+  },
+];
 
 const WHAT_WE_DO = [
   {
@@ -210,7 +229,7 @@ export default function HomePage({ setPage }) {
         </div>
 
         <div className="flex flex-col gap-10 lg:gap-12">
-          {FEATURED.map((project) => (
+          {FEATURED_WITH_VOICE.map((project) => (
             <article
               key={project.id}
               className={`group/card overflow-hidden rounded-3xl border border-slate-100/90 bg-white/80 shadow-[0_4px_24px_rgba(15,23,42,0.06)] backdrop-blur-xl transition-all duration-500 ${project.ring} ${project.glow} hover:-translate-y-1 hover:shadow-2xl`}
@@ -247,6 +266,17 @@ export default function HomePage({ setPage }) {
                   <p className="mt-3 text-[13.5px] leading-relaxed text-slate-600">
                     {project.description}
                   </p>
+                  {project.cta?.pageId && (
+                    <div className="mt-5">
+                      <button
+                        type="button"
+                        onClick={go(project.cta.pageId)}
+                        className="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-[12px] font-extrabold uppercase tracking-widest text-white shadow-sm transition-colors hover:bg-slate-800"
+                      >
+                        {project.cta.label}
+                      </button>
+                    </div>
+                  )}
                 </div>
                 <div className="w-full shrink-0 md:max-w-md lg:max-w-lg">
                   {project.previewType === "model" ? (
