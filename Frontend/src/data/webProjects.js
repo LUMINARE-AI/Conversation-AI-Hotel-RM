@@ -2,6 +2,10 @@
  * Demo video URLs — replace with your own hosted previews in /public/videos/ for production.
  * Format: short MP4, H.264, muted-friendly for autoplay previews.
  */
+import woolcraftsModel from "../assets/Doll_V3.glb";
+import binkhalidPreview from "../assets/binkhalid.png";
+import aySolarPreview from "../assets/aysolarenergy.png";
+
 const SAMPLE = {
   a: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
   b: "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
@@ -25,7 +29,8 @@ export const WEB_PROJECTS = [
       "Three.js → React Three Fiber → Full Stack → AWS Amplify + EC2 → Nginx → SSL → Production",
     techStack: ["Three.js", "React Three Fiber", "Node.js", "AWS Amplify", "EC2", "Nginx", "Tripo API"],
     integrations: [],
-    videoSrc: SAMPLE.a,
+    previewType: "model",
+    modelSrc: woolcraftsModel,
     accent: "indigo",
     gradient: "from-indigo-500/15 via-violet-500/10 to-fuchsia-500/15",
     ring: "ring-indigo-500/25 hover:ring-indigo-400/45",
@@ -48,7 +53,8 @@ export const WEB_PROJECTS = [
     techJourney: null,
     techStack: ["MongoDB", "React", "Tailwind CSS", "Express.js", "Node.js", "Cloudinary"],
     integrations: ["Razorpay", "Delhivery", "Resend", "GoDaddy", "Vercel", "Render"],
-    videoSrc: SAMPLE.b,
+    previewType: "image",
+    imageSrc: binkhalidPreview,
     accent: "violet",
     gradient: "from-violet-500/15 via-purple-500/10 to-indigo-500/15",
     ring: "ring-violet-500/25 hover:ring-violet-400/45",
@@ -70,7 +76,8 @@ export const WEB_PROJECTS = [
     techJourney: null,
     techStack: ["Next.js", "React", "Tailwind CSS", "Vercel"],
     integrations: [],
-    videoSrc: SAMPLE.c,
+    previewType: "image",
+    imageSrc: aySolarPreview,
     accent: "amber",
     gradient: "from-amber-500/12 via-orange-500/10 to-yellow-500/12",
     ring: "ring-amber-500/25 hover:ring-amber-400/40",

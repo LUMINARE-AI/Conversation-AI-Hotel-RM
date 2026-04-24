@@ -4,6 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  assetsInclude: ["**/*.glb", "**/*.gltf", "**/*.bin", "**/*.hdr"],
   server: {
     proxy: {
       "/api": {

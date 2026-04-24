@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import "@google/model-viewer";
 import { Check, Sparkles, ShoppingBag, Sun, X, Zap } from "lucide-react";
 import { WEB_PROJECTS } from "../data/webProjects";
 
@@ -162,6 +163,50 @@ function ProjectVideoPreview({ project, onOpen, prefersReducedMotion, canHoverPl
   );
 }
 
+function ProjectModelPreview({ project, prefersReducedMotion }) {
+  return (
+    <div
+      className={`relative aspect-video overflow-hidden rounded-3xl border border-slate-200/90 bg-white ring-1 ring-slate-900/5 transition-transform duration-500 ease-out ${prefersReducedMotion ? "" : "hover:-translate-y-0.5"}`}
+      aria-label={`${project.title} 3D model preview`}
+    >
+      <model-viewer
+        src={project.modelSrc}
+        camera-controls
+        auto-rotate={!prefersReducedMotion}
+        rotation-per-second="18deg"
+        shadow-intensity="0.8"
+        exposure="1.05"
+        environment-image="neutral"
+        class="absolute inset-0 h-full w-full"
+        style={{
+          width: "100%",
+          height: "100%",
+          background: "linear-gradient(135deg, #ffffff 0%, #bfe6ff 100%)",
+        }}
+      />
+
+      {/* Intentionally no dark overlay: keep preview clean */}
+    </div>
+  );
+}
+
+function ProjectImagePreview({ project, prefersReducedMotion }) {
+  return (
+    <div
+      className={`relative aspect-video overflow-hidden rounded-3xl border border-slate-200/90 bg-linear-to-br from-white via-sky-50 to-sky-200 ring-1 ring-slate-900/5 transition-transform duration-500 ease-out ${prefersReducedMotion ? "" : "hover:-translate-y-0.5"}`}
+      aria-label={`${project.title} preview image`}
+    >
+      <img
+        src={project.imageSrc}
+        alt={`${project.title} preview`}
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-contain"
+      />
+      {/* Intentionally no dark overlay: keep preview clean */}
+    </div>
+  );
+}
+
 function TechBadge({ children, variant = "neutral" }) {
   const styles =
     variant === "accent"
@@ -254,6 +299,141 @@ function VideoLightbox({ project, onClose }) {
   );
 }
 
+function ModelLightbox({ project, onClose }) {
+  const closeRef = useRef(null);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/92 p-4 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="web-project-lightbox-title"
+      onClick={onClose}
+    >
+      <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          className="absolute -right-1 -top-12 z-10 flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 md:-right-2 md:-top-2 md:bg-white/90 md:text-slate-700 md:hover:bg-white"
+          aria-label="Close 3D preview"
+        >
+          <X className="h-5 w-5" strokeWidth={2.25} />
+        </button>
+
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_24px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+          <div className="border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur-md">
+            <h2
+              id="web-project-lightbox-title"
+              className="text-[15px] font-bold tracking-tight text-white md:text-[17px]"
+            >
+              {project.title}
+              {project.subtitle && (
+                <span className="ml-2 font-semibold text-slate-300">— {project.subtitle}</span>
+              )}
+            </h2>
+            <p className="mt-0.5 text-xs font-medium text-slate-400">{project.tagline}</p>
+          </div>
+
+          <div className="relative h-[min(78vh,720px)] w-full bg-linear-to-br from-white via-sky-100 to-sky-300">
+            <model-viewer
+              src={project.modelSrc}
+              camera-controls
+              auto-rotate
+              shadow-intensity="0.8"
+              exposure="1.05"
+              environment-image="neutral"
+              class="absolute inset-0 h-full w-full"
+              style={{ width: "100%", height: "100%" }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImageLightbox({ project, onClose }) {
+  const closeRef = useRef(null);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  useEffect(() => {
+    function onKey(e) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/92 p-4 backdrop-blur-md"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="web-project-lightbox-title"
+      onClick={onClose}
+    >
+      <div className="relative w-full max-w-5xl" onClick={(e) => e.stopPropagation()}>
+        <button
+          ref={closeRef}
+          type="button"
+          onClick={onClose}
+          className="absolute -right-1 -top-12 z-10 flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white backdrop-blur-md transition-colors hover:bg-white/20 md:-right-2 md:-top-2 md:bg-white/90 md:text-slate-700 md:hover:bg-white"
+          aria-label="Close preview"
+        >
+          <X className="h-5 w-5" strokeWidth={2.25} />
+        </button>
+
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-black shadow-[0_24px_80px_rgba(0,0,0,0.55)] ring-1 ring-white/10">
+          <div className="border-b border-white/10 bg-slate-900/80 px-4 py-3 backdrop-blur-md">
+            <h2
+              id="web-project-lightbox-title"
+              className="text-[15px] font-bold tracking-tight text-white md:text-[17px]"
+            >
+              {project.title}
+              {project.subtitle && (
+                <span className="ml-2 font-semibold text-slate-300">— {project.subtitle}</span>
+              )}
+            </h2>
+            <p className="mt-0.5 text-xs font-medium text-slate-400">{project.tagline}</p>
+          </div>
+
+          <img
+            src={project.imageSrc}
+            alt={`${project.title} preview`}
+            className="max-h-[min(78vh,720px)] w-full bg-black object-contain"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function WebProjectsShowcase({ onNavigate }) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const canHoverPlay = useFinePointerHover();
@@ -274,7 +454,7 @@ export default function WebProjectsShowcase({ onNavigate }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-2xl border border-slate-200/80 bg-white/70 p-1 shadow-sm backdrop-blur-md">
           {[
-            { id: "webprojects", label: "Webprojects" },
+            { id: "webprojects", label: "FullStack" },
             { id: "marketing", label: "Digital Marketing" },
             { id: "ai", label: "AI Products" },
           ].map((t) => {
@@ -373,9 +553,16 @@ export default function WebProjectsShowcase({ onNavigate }) {
                       <ProjectIcon id={project.id} className="h-6 w-6 md:h-7 md:w-7" />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="text-[22px] font-extrabold tracking-tight text-slate-900 md:text-[26px]">
-                        {project.title}
-                      </h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-[22px] font-extrabold tracking-tight text-slate-900 md:text-[26px]">
+                          {project.title}
+                        </h3>
+                        {project.previewType === "model" && (
+                          <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-700">
+                            3D preview
+                          </span>
+                        )}
+                      </div>
                       {project.subtitle && (
                         <p className="text-[15px] font-semibold text-violet-700 md:text-base">
                           {project.subtitle}
@@ -395,12 +582,24 @@ export default function WebProjectsShowcase({ onNavigate }) {
               </div>
 
               <div className="mb-6 md:mb-7">
-                <ProjectVideoPreview
-                  project={project}
-                  onOpen={openModal}
-                  prefersReducedMotion={prefersReducedMotion}
-                  canHoverPlay={canHoverPlay}
-                />
+                {project.previewType === "model" ? (
+                  <ProjectModelPreview
+                    project={project}
+                    prefersReducedMotion={prefersReducedMotion}
+                  />
+                ) : project.previewType === "image" ? (
+                  <ProjectImagePreview
+                    project={project}
+                    prefersReducedMotion={prefersReducedMotion}
+                  />
+                ) : (
+                  <ProjectVideoPreview
+                    project={project}
+                    onOpen={openModal}
+                    prefersReducedMotion={prefersReducedMotion}
+                    canHoverPlay={canHoverPlay}
+                  />
+                )}
               </div>
 
               <p className="mb-5 text-[15px] leading-relaxed text-slate-600 md:text-base md:leading-relaxed">
@@ -633,16 +832,25 @@ export default function WebProjectsShowcase({ onNavigate }) {
         </div>
       )}
 
-      {lightbox && (
-        <VideoLightbox project={lightbox} onClose={closeModal} />
-      )}
+      {lightbox &&
+        (lightbox.previewType === "model" ? (
+          <ModelLightbox project={lightbox} onClose={closeModal} />
+        ) : lightbox.previewType === "image" ? (
+          <ImageLightbox project={lightbox} onClose={closeModal} />
+        ) : (
+          <VideoLightbox project={lightbox} onClose={closeModal} />
+        ))}
     </div>
   );
 }
 
 export {
   ProjectVideoPreview,
+  ProjectModelPreview,
+  ProjectImagePreview,
   VideoLightbox,
+  ModelLightbox,
+  ImageLightbox,
   usePrefersReducedMotion,
   useFinePointerHover,
   pauseAllPreviewVideos,

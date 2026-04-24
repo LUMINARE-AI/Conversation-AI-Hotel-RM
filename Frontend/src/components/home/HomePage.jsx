@@ -1,13 +1,13 @@
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { Check } from "lucide-react";
 import { Icon, Card, PrimaryButton } from "../UI";
 import { WEB_PROJECTS } from "../../data/webProjects";
 import {
   ProjectVideoPreview,
-  VideoLightbox,
+  ProjectModelPreview,
+  ProjectImagePreview,
   usePrefersReducedMotion,
   useFinePointerHover,
-  pauseAllPreviewVideos,
 } from "../WebProjectsShowcase";
 
 const FEATURED = WEB_PROJECTS.slice(0, 3);
@@ -15,22 +15,19 @@ const FEATURED = WEB_PROJECTS.slice(0, 3);
 const WHAT_WE_DO = [
   {
     title: "AI voice agents",
-    body:
-      "Design and ship conversational flows for outbound campaigns, inbound support, and handoffs that feel human — with metrics you can trust.",
+    body: "Design and ship conversational flows for outbound campaigns, inbound support, and handoffs that feel human — with metrics you can trust.",
     icon: "phone",
     accent: "#6366f1",
   },
   {
     title: "Full-stack development",
-    body:
-      "End-to-end web apps: APIs, auth, payments, admin panels, and deployments — production-minded from day one.",
+    body: "End-to-end web apps: APIs, auth, payments, admin panels, and deployments — production-minded from day one.",
     icon: "layout",
     accent: "#8b5cf6",
   },
   {
     title: "Creative UI / UX",
-    body:
-      "Interfaces that match your brand: motion, accessibility, and performance so first impressions convert to retained users.",
+    body: "Interfaces that match your brand: motion, accessibility, and performance so first impressions convert to retained users.",
     icon: "dashboard",
     accent: "#10b981",
   },
@@ -79,14 +76,6 @@ function WaveformDemo() {
 export default function HomePage({ setPage }) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const canHoverPlay = useFinePointerHover();
-  const [lightbox, setLightbox] = useState(null);
-
-  const openModal = useCallback((project) => {
-    pauseAllPreviewVideos();
-    setLightbox(project);
-  }, []);
-
-  const closeModal = useCallback(() => setLightbox(null), []);
 
   const go = useCallback((id) => () => setPage(id), [setPage]);
 
@@ -123,8 +112,9 @@ export default function HomePage({ setPage }) {
           </span>
         </h1>
         <p className="relative mx-auto mt-5 max-w-2xl text-[15px] font-medium leading-relaxed text-slate-300 md:text-lg">
-          I design and engineer conversational agents, modern web apps, and polished interfaces — so
-          clients, recruiters, and founders see serious execution, not slides.
+          We design and engineer conversational agents, modern web apps, and
+          refined interfaces — turning ideas into production-ready systems, not
+          pitch decks.
         </p>
 
         <div className="relative mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
@@ -140,15 +130,21 @@ export default function HomePage({ setPage }) {
             onClick={go("contact")}
             className="inline-flex min-w-[200px] items-center justify-center rounded-xl border border-white/25 bg-white/5 px-7 py-3.5 text-[14px] font-bold text-white backdrop-blur-sm transition-all duration-200 hover:border-white/40 hover:bg-white/10"
           >
-            Contact me
+            Contact us
           </button>
         </div>
       </section>
 
       {/* What we do */}
-      <section className="scroll-mt-28" id="what-we-do" aria-labelledby="home-what-title">
+      <section
+        className="scroll-mt-28"
+        id="what-we-do"
+        aria-labelledby="home-what-title"
+      >
         <div className="mb-8 text-center md:mb-10">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600">What we do</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600">
+            What we do
+          </p>
           <h2
             id="home-what-title"
             className="mt-2 text-[24px] font-extrabold tracking-tight text-slate-900 md:text-[28px]"
@@ -156,8 +152,8 @@ export default function HomePage({ setPage }) {
             One partner for voice, web, and experience
           </h2>
           <p className="mx-auto mt-2 max-w-2xl text-[14px] font-medium text-slate-500 md:text-[15px]">
-            From AI calling stacks to customer-facing apps — aligned with your brand and ready for real
-            traffic.
+            From AI calling stacks to customer-facing apps — aligned with your
+            brand and ready for real traffic.
           </p>
         </div>
         <div className="grid grid-cols-1 gap-5 md:grid-cols-3 md:gap-6">
@@ -170,8 +166,12 @@ export default function HomePage({ setPage }) {
                 >
                   <Icon name={item.icon} size={22} />
                 </div>
-                <h3 className="text-[16px] font-bold text-slate-900">{item.title}</h3>
-                <p className="mt-2 text-[13.5px] leading-relaxed text-slate-600">{item.body}</p>
+                <h3 className="text-[16px] font-bold text-slate-900">
+                  {item.title}
+                </h3>
+                <p className="mt-2 text-[13.5px] leading-relaxed text-slate-600">
+                  {item.body}
+                </p>
               </div>
             </Card>
           ))}
@@ -179,7 +179,11 @@ export default function HomePage({ setPage }) {
       </section>
 
       {/* Featured projects */}
-      <section className="scroll-mt-28" id="featured" aria-labelledby="home-featured-title">
+      <section
+        className="scroll-mt-28"
+        id="featured"
+        aria-labelledby="home-featured-title"
+      >
         <div className="mb-8 flex flex-col items-start justify-between gap-4 md:mb-10 md:flex-row md:items-end">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600">
@@ -192,7 +196,8 @@ export default function HomePage({ setPage }) {
               Flagship builds
             </h2>
             <p className="mt-2 max-w-xl text-[14px] font-medium text-slate-500">
-              A snapshot of production work — hover videos on desktop, tap for fullscreen on mobile.
+              A snapshot of production work — 3D previews and project snapshots,
+              built with a focus on polish and performance.
             </p>
           </div>
           <button
@@ -216,27 +221,52 @@ export default function HomePage({ setPage }) {
               />
               <div className="p-6 md:flex md:gap-10 md:p-8">
                 <div className="mb-6 min-w-0 flex-1 md:mb-0">
-                  <h3 className="text-[20px] font-extrabold tracking-tight text-slate-900 md:text-[22px]">
-                    {project.title}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-[20px] font-extrabold tracking-tight text-slate-900 md:text-[22px]">
+                      {project.title}
+                    </h3>
+                    {project.previewType === "model" && (
+                      <span className="inline-flex items-center rounded-full border border-indigo-200/80 bg-indigo-50/90 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-widest text-indigo-700">
+                        3D preview
+                      </span>
+                    )}
+                  </div>
                   {project.subtitle && (
-                    <p className="mt-1 text-[14px] font-semibold text-violet-700">{project.subtitle}</p>
+                    <p className="mt-1 text-[14px] font-semibold text-violet-700">
+                      {project.subtitle}
+                    </p>
                   )}
                   {project.typeLabel && (
                     <span className="mt-2 inline-block rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
                       {project.typeLabel}
                     </span>
                   )}
-                  <p className="mt-3 text-[14px] font-semibold text-indigo-600">{project.tagline}</p>
-                  <p className="mt-3 text-[13.5px] leading-relaxed text-slate-600">{project.description}</p>
+                  <p className="mt-3 text-[14px] font-semibold text-indigo-600">
+                    {project.tagline}
+                  </p>
+                  <p className="mt-3 text-[13.5px] leading-relaxed text-slate-600">
+                    {project.description}
+                  </p>
                 </div>
                 <div className="w-full shrink-0 md:max-w-md lg:max-w-lg">
-                  <ProjectVideoPreview
-                    project={project}
-                    onOpen={openModal}
-                    prefersReducedMotion={prefersReducedMotion}
-                    canHoverPlay={canHoverPlay}
-                  />
+                  {project.previewType === "model" ? (
+                    <ProjectModelPreview
+                      project={project}
+                      prefersReducedMotion={prefersReducedMotion}
+                    />
+                  ) : project.previewType === "image" ? (
+                    <ProjectImagePreview
+                      project={project}
+                      prefersReducedMotion={prefersReducedMotion}
+                    />
+                  ) : (
+                    <ProjectVideoPreview
+                      project={project}
+                      onOpen={() => {}}
+                      prefersReducedMotion={prefersReducedMotion}
+                      canHoverPlay={canHoverPlay}
+                    />
+                  )}
                 </div>
               </div>
             </article>
@@ -245,9 +275,15 @@ export default function HomePage({ setPage }) {
       </section>
 
       {/* Why choose me */}
-      <section className="scroll-mt-28" id="why-me" aria-labelledby="home-why-title">
+      <section
+        className="scroll-mt-28"
+        id="why-me"
+        aria-labelledby="home-why-title"
+      >
         <div className="mb-8 text-center md:mb-10">
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600">Why work with me</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600">
+            Why work with us
+          </p>
           <h2
             id="home-why-title"
             className="mt-2 text-[24px] font-extrabold tracking-tight text-slate-900 md:text-[28px]"
@@ -263,8 +299,12 @@ export default function HomePage({ setPage }) {
                   <Check className="h-5 w-5" strokeWidth={2.5} />
                 </span>
                 <div>
-                  <h3 className="text-[15px] font-bold text-slate-900">{p.title}</h3>
-                  <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-600">{p.text}</p>
+                  <h3 className="text-[15px] font-bold text-slate-900">
+                    {p.title}
+                  </h3>
+                  <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-600">
+                    {p.text}
+                  </p>
                 </div>
               </div>
             </Card>
@@ -279,7 +319,9 @@ export default function HomePage({ setPage }) {
       >
         <div className="grid grid-cols-1 gap-8 p-8 md:grid-cols-2 md:gap-12 md:p-10 lg:p-12">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600">Voice-Labs</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-600">
+              Voice-Labs
+            </p>
             <h2
               id="home-voice-title"
               className="mt-2 text-[22px] font-extrabold tracking-tight text-slate-900 md:text-[26px]"
@@ -287,14 +329,19 @@ export default function HomePage({ setPage }) {
               AI voice agents for real calling workflows
             </h2>
             <p className="mt-3 text-[14px] leading-relaxed text-slate-600 md:text-[15px]">
-              Explore dashboards, triggers, reports, and conversational tools — the same stack used to
-              prototype and run voice experiences end to end.
+              Explore dashboards, triggers, reports, and conversational tools —
+              the same stack used to prototype and run voice experiences end to
+              end.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <PrimaryButton type="button" onClick={go("dashboard")}>
                 Open Voice-Labs
               </PrimaryButton>
-              <PrimaryButton type="button" variant="secondary" onClick={go("samvaad")}>
+              <PrimaryButton
+                type="button"
+                variant="secondary"
+                onClick={go("samvaad")}
+              >
                 Try Voice-Labs
               </PrimaryButton>
             </div>
@@ -305,7 +352,8 @@ export default function HomePage({ setPage }) {
             </p>
             <WaveformDemo />
             <p className="mt-4 text-center text-[12px] font-medium text-slate-500">
-              Waveform animation suggests real-time audio — dive into Voice-Labs for full flows.
+              Waveform animation suggests real-time audio — dive into Voice-Labs
+              for full flows.
             </p>
           </div>
         </div>
@@ -316,15 +364,23 @@ export default function HomePage({ setPage }) {
         className="scroll-mt-28 overflow-hidden rounded-3xl border border-slate-200/80 bg-slate-900 px-6 py-12 text-center shadow-[0_20px_50px_rgba(15,23,42,0.35)] md:px-12 md:py-14"
         aria-labelledby="home-cta-title"
       >
-        <h2 id="home-cta-title" className="text-[22px] font-extrabold tracking-tight text-white md:text-[28px]">
+        <h2
+          id="home-cta-title"
+          className="text-[22px] font-extrabold tracking-tight text-white md:text-[28px]"
+        >
           Let&apos;s build something impactful together
         </h2>
         <p className="mx-auto mt-3 max-w-xl text-[14px] font-medium text-slate-400 md:text-[15px]">
-          Tell me about your product, timeline, and constraints — I&apos;ll respond with a clear next step.
+          Tell me about your product, timeline, and constraints — I&apos;ll
+          respond with a clear next step.
         </p>
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row sm:gap-4">
-          <PrimaryButton type="button" onClick={go("contact")} className="min-w-[200px]">
-            Contact me
+          <PrimaryButton
+            type="button"
+            onClick={go("contact")}
+            className="min-w-[200px]"
+          >
+            Contact us
           </PrimaryButton>
           <button
             type="button"
@@ -336,7 +392,6 @@ export default function HomePage({ setPage }) {
         </div>
       </section>
 
-      {lightbox && <VideoLightbox project={lightbox} onClose={closeModal} />}
     </div>
   );
 }
