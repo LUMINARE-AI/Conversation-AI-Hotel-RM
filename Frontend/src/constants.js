@@ -13,7 +13,7 @@ export const VOICE_LABS_PAGE_IDS = VOICE_LABS_NAV.map((n) => n.id);
 /** Top-level marketing / site pages */
 export const SITE_NAV = [
   { id: "home", label: "Home", icon: "home" },
-  { id: "web-projects", label: "Web Projects", icon: "layout" },
+  { id: "web-projects", label: "Services", icon: "layout" },
   { id: "about", label: "About Us", icon: "users" },
   { id: "contact", label: "Contact Us", icon: "mail" },
 ];

@@ -69,6 +69,79 @@ function BlobShape({ gradient, glow, id, children }) {
       className="relative flex items-center justify-center"
       style={{ width: 280, height: 280 }}
     >
+      {/* “Luminare” shine core — brain + shimmer (behind CTA) */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <div className="relative">
+          <div
+            className="absolute inset-0 rounded-full blur-2xl opacity-70 voice-labs-brain-glow"
+            style={{
+              width: 190,
+              height: 190,
+              background: `radial-gradient(circle at 40% 35%, ${gradient[1]} 0%, ${gradient[0]} 45%, rgba(255,255,255,0) 72%)`,
+              transform: "translate(-2px, -6px)",
+            }}
+            aria-hidden
+          />
+          <div
+            className="absolute inset-0 rounded-full blur-xl opacity-60 voice-labs-shine-sweep"
+            style={{
+              width: 190,
+              height: 190,
+              background:
+                "linear-gradient(120deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.28) 22%, rgba(255,255,255,0) 48%)",
+              maskImage:
+                "radial-gradient(circle at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 58%, rgba(0,0,0,0) 72%)",
+              WebkitMaskImage:
+                "radial-gradient(circle at 50% 50%, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 58%, rgba(0,0,0,0) 72%)",
+            }}
+            aria-hidden
+          />
+
+          {/* Brain icon */}
+          <svg
+            width="150"
+            height="150"
+            viewBox="0 0 200 200"
+            className="opacity-90"
+            aria-hidden
+          >
+            <defs>
+              <linearGradient id={`brainGrad-${id}`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stopColor={gradient[1]} stopOpacity="0.95" />
+                <stop offset="55%" stopColor={gradient[0]} stopOpacity="0.95" />
+                <stop offset="100%" stopColor="white" stopOpacity="0.55" />
+              </linearGradient>
+              <filter id={`brainGlow-${id}`} x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur stdDeviation="2.8" result="b" />
+                <feMerge>
+                  <feMergeNode in="b" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            {/* Soft outer brain silhouette */}
+            <path
+              d="M78 48c-18 0-32 14-32 32 0 8 3 15 7 20-3 4-5 9-5 14 0 14 11 25 25 25 3 0 6 0 8-1 5 9 15 15 27 15 12 0 22-6 27-15 2 1 5 1 8 1 14 0 25-11 25-25 0-5-2-10-5-14 4-5 7-12 7-20 0-18-14-32-32-32-6 0-11 1-16 4-6-9-16-14-27-14-11 0-21 5-27 14-5-3-10-4-16-4Z"
+              fill={`url(#brainGrad-${id})`}
+              filter={`url(#brainGlow-${id})`}
+              opacity="0.9"
+            />
+
+            {/* Inner “neural folds” */}
+            <path
+              d="M78 62c-10 0-18 8-18 18 0 6 3 11 7 14-4 2-7 6-7 11 0 8 6 14 14 14m4-56c8 2 14 10 14 19m0-19c9 2 16 11 16 21m0-21c8-2 17 2 22 9m-64 40c6 0 10-5 10-11m18-36c-3 5-3 12 0 18m28-14c6 5 9 13 7 21m-8 30c8 0 14-6 14-14 0-5-2-9-6-11 4-3 7-8 7-14 0-10-8-18-18-18"
+              fill="none"
+              stroke="rgba(255,255,255,0.65)"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.8"
+            />
+          </svg>
+        </div>
+      </div>
+
       <svg
         viewBox="0 0 200 200"
         xmlns="http://www.w3.org/2000/svg"
@@ -547,6 +620,26 @@ export default function Samvaad() {
           0%   { opacity: 1;   transform: scale(1); }
           80%  { opacity: 0;   transform: scale(1.4); }
           100% { opacity: 0;   transform: scale(1.4); }
+        }
+
+        /* Voice-Labs shine (Luminare) */
+        .voice-labs-brain-glow {
+          animation: brainGlow 2.8s ease-in-out infinite;
+        }
+        .voice-labs-shine-sweep {
+          animation: shineSweep 3.4s ease-in-out infinite;
+          mix-blend-mode: screen;
+        }
+        @keyframes brainGlow {
+          0%   { transform: translate(-2px, -6px) scale(0.98); opacity: 0.55; }
+          50%  { transform: translate(-2px, -6px) scale(1.03); opacity: 0.85; }
+          100% { transform: translate(-2px, -6px) scale(0.98); opacity: 0.55; }
+        }
+        @keyframes shineSweep {
+          0%   { transform: translateX(-26px) rotate(0deg); opacity: 0.0; }
+          25%  { opacity: 0.55; }
+          55%  { transform: translateX(26px) rotate(0deg); opacity: 0.2; }
+          100% { transform: translateX(26px) rotate(0deg); opacity: 0.0; }
         }
       `}</style>
     </div>

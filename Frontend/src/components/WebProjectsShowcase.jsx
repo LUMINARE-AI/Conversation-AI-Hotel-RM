@@ -254,10 +254,11 @@ function VideoLightbox({ project, onClose }) {
   );
 }
 
-export default function WebProjectsShowcase() {
+export default function WebProjectsShowcase({ onNavigate }) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const canHoverPlay = useFinePointerHover();
   const [lightbox, setLightbox] = useState(null);
+  const [tab, setTab] = useState("webprojects"); // webprojects | marketing | ai
   const headingId = useId();
 
   const openModal = useCallback((project) => {
@@ -269,6 +270,33 @@ export default function WebProjectsShowcase() {
 
   return (
     <div className="w-full space-y-12" aria-labelledby={headingId}>
+      {/* Top toggles */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-2xl border border-slate-200/80 bg-white/70 p-1 shadow-sm backdrop-blur-md">
+          {[
+            { id: "webprojects", label: "Webprojects" },
+            { id: "marketing", label: "Digital Marketing" },
+            { id: "ai", label: "AI Products" },
+          ].map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`px-4 py-2 rounded-xl text-[12px] font-extrabold tracking-widest uppercase transition-all duration-150 cursor-pointer border-none ${
+                  active
+                    ? "text-indigo-700 bg-indigo-50 shadow-[0_6px_18px_rgba(99,102,241,0.16)]"
+                    : "text-slate-500 hover:text-slate-900 hover:bg-slate-100"
+                }`}
+              >
+                {t.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-linear-to-br from-white via-indigo-50/40 to-violet-50/50 p-8 shadow-[0_2px_24px_rgba(99,102,241,0.08)] md:p-11">
         <div
           className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-indigo-400/20 blur-3xl"
@@ -281,24 +309,46 @@ export default function WebProjectsShowcase() {
 
         <div className="relative max-w-3xl">
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-600 md:text-xs">
-            Selected work
+            Services
           </p>
           <h2
             id={headingId}
             className="mt-2 text-[28px] font-extrabold tracking-tight text-slate-900 md:text-[34px]"
           >
-            Web projects that ship
+            {tab === "webprojects"
+              ? "Web projects that ship"
+              : tab === "marketing"
+                ? "Digital marketing that compounds"
+                : "AI products built for real ops"}
           </h2>
           <p className="mt-3 text-[15px] font-medium leading-relaxed text-slate-500 md:text-base">
-            Three flagship builds — 3D product platforms, full-stack commerce, and
-            high-performance marketing sites — each crafted with the same obsession
-            for polish, performance, and measurable outcomes.
+            {tab === "webprojects" && (
+              <>
+                Three flagship builds — 3D product platforms, full-stack commerce, and
+                high-performance marketing sites — crafted with obsession for polish,
+                performance, and measurable outcomes.
+              </>
+            )}
+            {tab === "marketing" && (
+              <>
+                SEO + content + distribution, designed to drive qualified leads over time.
+                Clean execution, clear reporting, and steady improvements — not gimmicks.
+              </>
+            )}
+            {tab === "ai" && (
+              <>
+                Voice and chat agents that reduce response time, automate follow‑ups, and
+                convert intent into action — without sounding robotic.
+              </>
+            )}
           </p>
         </div>
       </div>
 
-      <div className="flex flex-col gap-10 md:gap-12">
-        {WEB_PROJECTS.map((project, i) => (
+      {/* Webprojects */}
+      {tab === "webprojects" && (
+        <div className="flex flex-col gap-10 md:gap-12">
+          {WEB_PROJECTS.map((project, i) => (
           <article
             key={project.id}
             className={`web-project-card-enter group/card relative flex flex-col overflow-hidden rounded-3xl border border-slate-100/90 bg-white/75 shadow-[0_4px_28px_rgba(15,23,42,0.08)] backdrop-blur-xl transition-all duration-500 ease-out ${project.ring} ${project.glow} hover:-translate-y-1 hover:shadow-2xl ${
@@ -415,8 +465,173 @@ export default function WebProjectsShowcase() {
               )}
             </div>
           </article>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
+
+      {/* Digital Marketing */}
+      {tab === "marketing" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2 overflow-hidden rounded-3xl border border-slate-200/80 bg-white/80 p-7 shadow-[0_4px_28px_rgba(15,23,42,0.06)] backdrop-blur-md">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+              Digital marketing & SEO
+            </p>
+            <h3 className="mt-2 text-[22px] font-extrabold tracking-tight text-slate-900">
+              Rank, convert, and keep improving
+            </h3>
+            <p className="mt-3 text-[14px] leading-relaxed text-slate-600">
+              We focus on search intent and conversion — not vanity metrics. The approach is simple:
+              understand what customers are looking for, publish the best answer, and refine the funnel
+              until it consistently produces leads.
+            </p>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {[
+                {
+                  title: "SEO foundations",
+                  points: [
+                    "Technical SEO: speed, indexing, schema",
+                    "On-page SEO: pages built around intent",
+                    "Local SEO: GMB + location landing pages",
+                  ],
+                },
+                {
+                  title: "Content & authority",
+                  points: [
+                    "Topical clusters (blogs, guides, FAQs)",
+                    "Internal linking + keyword mapping",
+                    "Backlink strategy (ethical outreach)",
+                  ],
+                },
+                {
+                  title: "Conversion & tracking",
+                  points: [
+                    "Lead-focused landing pages & CTAs",
+                    "Analytics: events + funnels",
+                    "Weekly iteration based on what works",
+                  ],
+                },
+                {
+                  title: "Performance marketing (optional)",
+                  points: [
+                    "Search ads for high-intent keywords",
+                    "Retargeting for warm traffic",
+                    "Budget-aware optimization",
+                  ],
+                },
+              ].map((b) => (
+                <div key={b.title} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-indigo-600">
+                    {b.title}
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {b.points.map((p) => (
+                      <li key={p} className="flex gap-2 text-[13px] font-medium text-slate-700">
+                        <span className="mt-0.5 shrink-0 text-emerald-500">
+                          <Check className="h-4 w-4" strokeWidth={2.5} />
+                        </span>
+                        <span>{p}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-linear-to-br from-indigo-500/10 via-violet-500/8 to-fuchsia-500/10 p-7 shadow-[0_4px_28px_rgba(15,23,42,0.06)]">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
+              Deliverables
+            </p>
+            <h3 className="mt-2 text-[18px] font-extrabold tracking-tight text-slate-900">
+              What you get
+            </h3>
+            <ul className="mt-4 space-y-2.5 text-[13px] font-medium text-slate-700">
+              {[
+                "SEO audit + priority roadmap",
+                "Keyword plan + content calendar",
+                "On-page implementation guidance",
+                "Monthly report: rankings, leads, actions",
+              ].map((x) => (
+                <li key={x} className="flex gap-2">
+                  <span className="mt-0.5 shrink-0 text-indigo-600">•</span>
+                  <span>{x}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* AI Products */}
+      {tab === "ai" && (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/80 p-7 shadow-[0_4px_28px_rgba(15,23,42,0.06)] backdrop-blur-md">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-600">
+              Voice-Labs (Calling Agent)
+            </p>
+            <h3 className="mt-2 text-[22px] font-extrabold tracking-tight text-slate-900">
+              Real‑time calling agent for outbound & inbound
+            </h3>
+            <p className="mt-3 text-[14px] leading-relaxed text-slate-600">
+              A low-latency voice agent that listens, understands intent, and replies naturally.
+              Great for follow‑ups, reminders, lead qualification, and support.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              {["Real-time STT/LLM/TTS", "Context-driven calls", "Low latency"].map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex rounded-full border border-slate-200/90 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-500"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof onNavigate === "function") onNavigate("samvaad");
+                }}
+                className="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-5 py-3 text-[12px] font-extrabold uppercase tracking-widest text-white shadow-sm transition-colors hover:bg-slate-800"
+              >
+                Open Voice‑Labs
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/80 p-7 shadow-[0_4px_28px_rgba(15,23,42,0.06)] backdrop-blur-md">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-violet-600">
+              WhatsApp Agent (Realtime Chat)
+            </p>
+            <h3 className="mt-2 text-[22px] font-extrabold tracking-tight text-slate-900">
+              Instant replies that feel human — 24×7
+            </h3>
+            <p className="mt-3 text-[14px] leading-relaxed text-slate-600">
+              A WhatsApp agent that chats in real time, answers FAQs, captures leads, and follows up
+              automatically — perfect for gyms, salons, coaching, and any business struggling with WhatsApp replies.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              {["Lead capture", "FAQ + pricing", "Follow-ups", "Industry-friendly"].map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex rounded-full border border-slate-200/90 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-500"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+            <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
+              <p className="text-[12px] font-semibold text-slate-700">
+                Use cases: gyms • salons • coaching • clinics • any local business
+              </p>
+              <p className="mt-1 text-[12px] text-slate-500">
+                We can add a demo link once your WhatsApp endpoint is ready.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {lightbox && (
         <VideoLightbox project={lightbox} onClose={closeModal} />

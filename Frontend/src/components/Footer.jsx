@@ -10,7 +10,7 @@ const BRAND = {
 const FOOTER_NAV = [
   { id: "home", label: "Home" },
   { id: "dashboard", label: "Voice-Labs" },
-  { id: "web-projects", label: "Web Projects" },
+  { id: "web-projects", label: "Services" },
   { id: "about", label: "About Us" },
   { id: "contact", label: "Contact Us" },
 ];
