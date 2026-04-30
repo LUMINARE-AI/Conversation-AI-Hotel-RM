@@ -829,6 +829,74 @@ export default function WebProjectsShowcase({ onNavigate }) {
               </p>
             </div>
           </div>
+
+          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/80 p-7 shadow-[0_4px_28px_rgba(15,23,42,0.06)] backdrop-blur-md">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-emerald-700">
+              Product Quality Control (GenAI Vision)
+            </p>
+            <h3 className="mt-2 text-[22px] font-extrabold tracking-tight text-slate-900">
+              Compare images, find defects, and rate quality
+            </h3>
+            <p className="mt-3 text-[14px] leading-relaxed text-slate-600">
+              A GenAI vision model that compares the perfect reference image with the actual product image,
+              detects defects, highlights where the defects are, and returns an overall quality rating.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              {["Reference vs actual comparison", "Defect localization", "Overall rating"].map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex rounded-full border border-slate-200/90 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-500"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+            <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
+              <p className="text-[12px] font-semibold text-slate-700">
+                Typical outputs: defect map/heatmap • defect list • pass/fail • rating score
+              </p>
+              <p className="mt-1 text-[12px] text-slate-500">
+                Best for manufacturing QC where a “golden sample” reference is available.
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white/80 p-7 shadow-[0_4px_28px_rgba(15,23,42,0.06)] backdrop-blur-md">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-amber-700">
+              Bid Evaluation (GenAI)
+            </p>
+            <h3 className="mt-2 text-[22px] font-extrabold tracking-tight text-slate-900">
+              Bid Evaluator Tool powered by Generative AI
+            </h3>
+            <p className="mt-3 text-[14px] leading-relaxed text-slate-600">
+              Automatically analyzes submitted bid documents against RFP requirements, generates a detailed
+              qualification report (qualify / not qualify), and lets users ask specific questions about any
+              bid for deeper insights.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              {[
+                "RFP requirement matching",
+                "Qualification report",
+                "Ask questions on bid docs",
+                "Explainable highlights",
+              ].map((t) => (
+                <span
+                  key={t}
+                  className="inline-flex rounded-full border border-slate-200/90 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-widest text-slate-500"
+                >
+                  {t}
+                </span>
+              ))}
+            </div>
+            <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3">
+              <p className="text-[12px] font-semibold text-slate-700">
+                Simplifies evaluation, improves accuracy, and saves time
+              </p>
+              <p className="mt-1 text-[12px] text-slate-500">
+                Helps teams in any industry focus on decision-making instead of manual bid reviews.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
