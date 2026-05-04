@@ -13,8 +13,7 @@
 }
 
 .web-project-card-enter {
-  animation: fadeUp 0.55s ease both forwards;
-  opacity: 0;
+  animation: fadeUp 0.55s ease both;
 }
 
 @media (prefers-reduced-motion: reduce) {
