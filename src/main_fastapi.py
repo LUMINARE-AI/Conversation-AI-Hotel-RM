@@ -2,6 +2,14 @@
 FastAPI Application for Beacon Hotel Relationship Manager
 Faster, modern alternative to Flask with automatic OpenAPI docs
 """
+import os
+import sys
+
+# Ensure project root is importable when running as: python src/main_fastapi.py
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from src.utils.dummy_data_generator import initialize_dummy_data
 from src.utils.call_logger import CallLogger
 from src.services.livekit_sip_agent import LiveKitSIPAgentService, LIVEKIT_AGENTS_AVAILABLE
@@ -36,12 +44,6 @@ import asyncio
 from typing import List, Optional, Dict
 from datetime import datetime
 import logging
-import sys
-import os
-
-# Add parent directory to path
-sys.path.insert(0, os.path.abspath(
-    os.path.join(os.path.dirname(__file__), '..')))
 
 
 # Configure logging
